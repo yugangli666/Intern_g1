@@ -143,6 +143,7 @@ nohup.out
 
 wandb/
 logs/
+test_data/
 
 .vis_debug
 *.png

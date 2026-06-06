@@ -10,6 +10,7 @@ This folder contains the files intended to be copied to the Unitree G1 robot PC.
 - `requirements_g1.txt`: Python packages that are not provided by ROS2/Unitree.
 - `run_g1_client.sh`: convenience launcher for the robot PC.
 - `workstation_run_server_navdp.sh`: workstation-side reference command for `InternVLA-N1-w-NavDP`; this file is not required on G1.
+- `workstation_run_server_dualvln.sh`: workstation-side reference command for `InternVLA-N1-DualVLN`; this file is not required on G1.
 
 ## Workstation Server
 
@@ -24,6 +25,19 @@ Then run:
 ```bash
 cd /home/ubuntu/InternNav
 bash g1_client/workstation_run_server_navdp.sh
+```
+
+For a DualVLN server test, place the model at:
+
+```bash
+/home/ubuntu/InternNav/checkpoints/InternVLA-N1-DualVLN
+```
+
+Then run:
+
+```bash
+cd /home/ubuntu/InternNav
+bash g1_client/workstation_run_server_dualvln.sh
 ```
 
 The model is not downloaded by this setup.

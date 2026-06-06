@@ -20,7 +20,7 @@ def build_traj_dit(config):
 
     from .nextdit_crossattn_traj import NextDiTCrossAttn, NextDiTCrossAttnConfig
 
-    dit = NextDiTCrossAttn(NextDiTCrossAttnConfig(latent_embedding_size=LatentEmbSize))
+    dit = NextDiTCrossAttn(NextDiTCrossAttnConfig(latent_embedding_size=LatentEmbSize, ffn_dim_multiplier=2 / 3))
     noise_scheduler = FlowMatchEulerDiscreteScheduler()
     return dit, noise_scheduler
 
