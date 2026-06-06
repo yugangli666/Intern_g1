@@ -415,10 +415,10 @@ class G1Manager(Node):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="InternNav G1 real-world client")
-    parser.add_argument("--server_url", default="http://127.0.0.1:5801/eval_dual")
+    parser.add_argument("--server_url", default="http://192.168.0.170:5801/eval_dual")
     parser.add_argument("--instruction", required=True)
-    parser.add_argument("--rgb_topic", default="/camera/color/image_raw")
-    parser.add_argument("--depth_topic", default="/camera/aligned_depth_to_color/image_raw")
+    parser.add_argument("--rgb_topic", default="/camera/camera/color/image_raw")
+    parser.add_argument("--depth_topic", default="/camera/camera/aligned_depth_to_color/image_raw")
     parser.add_argument("--odom_topic", default="/lf/odommodestate")
     parser.add_argument("--control_topic", default="/api/sport/request")
     parser.add_argument("--debug_cmd_vel_topic", default="/cmd_vel")

@@ -56,17 +56,23 @@ ros2 topic list
 Default topics in the client:
 
 ```text
-RGB:     /camera/color/image_raw
-Depth:   /camera/aligned_depth_to_color/image_raw
+RGB:     /camera/camera/color/image_raw
+Depth:   /camera/camera/aligned_depth_to_color/image_raw
 Odom:    /lf/odommodestate
 Control: /api/sport/request
+```
+
+Start an Intel RealSense D455 on the G1:
+
+```bash
+bash run_d455_camera.sh
 ```
 
 Run the client:
 
 ```bash
 bash run_g1_client.sh \
-  --server_url http://WORKSTATION_IP:5801/eval_dual \
+  --server_url http://192.168.0.170:5801/eval_dual \
   --instruction "move forward until you are close to the chair, then turn right to face the door and enter the room. Then stop when you are close to the table."
 ```
 
@@ -74,9 +80,9 @@ If your topics differ, pass them explicitly:
 
 ```bash
 bash run_g1_client.sh \
-  --server_url http://WORKSTATION_IP:5801/eval_dual \
-  --rgb_topic /camera/color/image_raw \
-  --depth_topic /camera/aligned_depth_to_color/image_raw \
+  --server_url http://192.168.0.170:5801/eval_dual \
+  --rgb_topic /camera/camera/color/image_raw \
+  --depth_topic /camera/camera/aligned_depth_to_color/image_raw \
   --odom_topic /lf/odommodestate \
   --control_topic /api/sport/request \
   --instruction "..."
