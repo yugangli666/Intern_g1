@@ -253,5 +253,6 @@ class InternVLAN1AsyncAgent:
             return action_seq, None, None
 
     def step_s1(self, latent, rgb, depth):
-        all_trajs = self.model.generate_traj(latent, rgb, depth)
-        return all_trajs
+        with torch.no_grad():
+            all_trajs = self.model.generate_traj(latent, rgb, depth)
+        return all_trajs.detach()
