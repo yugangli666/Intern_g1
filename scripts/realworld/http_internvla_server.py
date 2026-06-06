@@ -97,18 +97,21 @@ if __name__ == '__main__':
     )
     parser.add_argument("--host", type=str, default="0.0.0.0")
     parser.add_argument("--port", type=int, default=5801)
+    parser.add_argument("--skip_warmup", action="store_true")
     args = parser.parse_args()
 
     args.camera_intrinsic = np.array(
         [[386.5, 0.0, 328.9, 0.0], [0.0, 386.5, 244, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
     )
     agent = InternVLAN1AsyncAgent(args)
-    agent.step(
-        np.zeros((480, 640, 3)),
-        np.zeros((480, 640)),
-        np.eye(4),
-        "hello",
-    )
-    agent.reset()
+    if not args.skip_warmup:
+        agent.step(
+            np.zeros((480, 640, 3), dtype=np.uint8),
+            np.zeros((480, 640), dtype=np.float32),
+            np.eye(4),
+            "hello",
+            intrinsic=args.camera_intrinsic,
+        )
+        agent.reset()
 
     app.run(host=args.host, port=args.port)

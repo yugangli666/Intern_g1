@@ -11,4 +11,5 @@ python scripts/realworld/http_internvla_server.py \
   --resize_w 384 \
   --resize_h 384 \
   --num_history 8 \
-  --plan_step_gap 8
+  --plan_step_gap 8 \
+  --skip_warmup
