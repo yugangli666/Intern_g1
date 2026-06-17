@@ -144,6 +144,8 @@ nohup.out
 wandb/
 logs/
 test_data/
+experiment_records/*
+!experiment_records/.gitkeep
 
 .vis_debug
 *.png

@@ -42,10 +42,16 @@ bash g1_client/workstation_run_server_dualvln.sh
 
 The model is not downloaded by this setup.
 
-Pixel-goal visualization records are saved on the workstation under:
+Raw debug images and per-step pixel-goal visualization records are saved on the workstation under:
 
 ```bash
 /home/ubuntu/InternNav/test_data/<timestamp>/pixel_goal_vis_*.jpg
+```
+
+Auto-generated experiment record pages are saved under:
+
+```bash
+/home/ubuntu/InternNav/experiment_records/<timestamp>/experiment_record_*.jpg
 ```
 
 ## G1 Robot PC

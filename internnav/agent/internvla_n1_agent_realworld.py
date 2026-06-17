@@ -2,6 +2,7 @@ import copy
 import itertools
 import os
 import re
+import shutil
 import sys
 import time
 from datetime import datetime
@@ -39,6 +40,22 @@ def _load_visual_font(size, bold=False):
 def _text_size(draw, text, font):
     bbox = draw.textbbox((0, 0), text, font=font)
     return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def _wrap_text(draw, text, font, max_width):
+    lines = []
+    current = ""
+    for word in text.split(" "):
+        candidate = word if not current else current + " " + word
+        if _text_size(draw, candidate, font)[0] <= max_width:
+            current = candidate
+        else:
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
 
 
 def _to_pixel(point):
@@ -115,11 +132,102 @@ def save_pixel_goal_visualization(image, pixel_goal, output_path, raw_coord=None
     canvas.save(output_path, quality=95)
 
 
+def _read_llm_output(record_dir, step):
+    llm_path = Path(record_dir) / f"llm_output_ {step:03d}.txt"
+    if not llm_path.exists():
+        return ""
+    return llm_path.read_text(errors="ignore").strip()
+
+
+def _file_time(path):
+    return datetime.fromtimestamp(Path(path).stat().st_mtime).strftime("%H:%M:%S")
+
+
+def save_experiment_record_pages(record_dir, run_id, instruction):
+    record_dir = Path(record_dir)
+    vis_files = sorted(record_dir.glob("pixel_goal_vis_*.jpg"))
+    if not vis_files:
+        return []
+
+    page_w = 1500
+    margin = 42
+    header_h = 220
+    cell_gap = 34
+    cols = 2
+    cell_w = (page_w - 2 * margin - cell_gap) // 2
+    image_h = 410
+    title_h = 58
+    cell_h = title_h + image_h
+    page_h = header_h + margin + 2 * cell_h + cell_gap + margin
+
+    title_font = _load_visual_font(34, bold=True)
+    sub_font = _load_visual_font(22)
+    meta_font = _load_visual_font(18)
+    card_title_font = _load_visual_font(22, bold=True)
+    card_meta_font = _load_visual_font(18)
+
+    page_paths = []
+    for page_idx, start in enumerate(range(0, len(vis_files), 4), 1):
+        files = vis_files[start : start + 4]
+        total_pages = (len(vis_files) + 3) // 4
+        canvas = Image.new("RGB", (page_w, page_h), (247, 248, 250))
+        draw = ImageDraw.Draw(canvas)
+
+        draw.rectangle((0, 0, page_w, header_h), fill=(255, 255, 255))
+        draw.text(
+            (margin, 28),
+            f"Experiment Record - {run_id}  ({page_idx}/{total_pages})",
+            fill=(25, 30, 38),
+            font=title_font,
+        )
+        y = 82
+        draw.text((margin, y), "导航指令 / Instruction:", fill=(60, 65, 75), font=sub_font)
+        y += 32
+        for line in _wrap_text(draw, instruction or "N/A", sub_font, page_w - 2 * margin):
+            draw.text((margin, y), line, fill=(20, 20, 20), font=sub_font)
+            y += 28
+        draw.text((margin, header_h - 28), f"Source: {record_dir}", fill=(105, 110, 120), font=meta_font)
+
+        for i, img_path in enumerate(files):
+            match = re.search(r"pixel_goal_vis_(\d+)", img_path.name)
+            step = int(match.group(1)) if match else -1
+            row = i // cols
+            col = i % cols
+            x0 = margin + col * (cell_w + cell_gap)
+            y0 = header_h + margin + row * (cell_h + cell_gap)
+            x1 = x0 + cell_w
+            y1 = y0 + cell_h
+
+            draw.rounded_rectangle(
+                (x0, y0, x1, y1),
+                radius=12,
+                fill=(255, 255, 255),
+                outline=(218, 222, 228),
+                width=2,
+            )
+            llm_output = _read_llm_output(record_dir, step)
+            card_title = f"Step {step:04d}" + ("  look_down" if "look_down" in img_path.name else "")
+            card_meta = f"LLM output: {llm_output or 'N/A'}    Time: {_file_time(img_path)}"
+            draw.text((x0 + 18, y0 + 12), card_title, fill=(24, 31, 42), font=card_title_font)
+            draw.text((x0 + 18, y0 + 38), card_meta, fill=(90, 95, 105), font=card_meta_font)
+
+            image = Image.open(img_path).convert("RGB")
+            image.thumbnail((cell_w - 24, image_h - 16), Image.Resampling.LANCZOS)
+            ix = x0 + (cell_w - image.width) // 2
+            iy = y0 + title_h + (image_h - image.height) // 2
+            canvas.paste(image, (ix, iy))
+
+        out_path = record_dir / f"experiment_record_{page_idx:02d}.jpg"
+        canvas.save(out_path, quality=95)
+        page_paths.append(out_path)
+
+    return page_paths
+
+
 class InternVLAN1AsyncAgent:
     def __init__(self, args):
         self.device = torch.device(args.device)
-        self.save_dir = "test_data/" + datetime.now().strftime("%Y%m%d_%H%M%S")
-        os.makedirs(self.save_dir, exist_ok=True)
+        self._start_new_run()
         print(f"args.model_path{args.model_path}")
         self.model = InternVLAN1ForCausalLM.from_pretrained(
             args.model_path,
@@ -177,6 +285,37 @@ class InternVLAN1AsyncAgent:
         self.pixel_goal_rgb = None
         self.pixel_goal_depth = None
 
+    def _start_new_run(self):
+        self.run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.save_dir = f"test_data/{self.run_id}"
+        self.record_dir = f"experiment_records/{self.run_id}"
+        self.current_instruction = ""
+        os.makedirs(self.save_dir, exist_ok=True)
+        os.makedirs(self.record_dir, exist_ok=True)
+
+    def _save_run_instruction(self, instruction):
+        instruction = str(instruction or "").strip()
+        if not instruction:
+            return
+        self.current_instruction = instruction
+        for directory in (self.save_dir, self.record_dir):
+            with open(f"{directory}/experiment_instruction.txt", "w") as f:
+                f.write(instruction + "\n")
+
+    def _save_llm_output(self):
+        filename = f"llm_output_{self.episode_idx: 04d}.txt"
+        for directory in (self.save_dir, self.record_dir):
+            with open(f"{directory}/{filename}", "w") as f:
+                f.write(self.llm_output)
+
+    def _save_pixel_goal_visualization(self, image, pixel_goal, raw_coord, suffix):
+        filename = f"pixel_goal_vis_{self.episode_idx:04d}{suffix}.jpg"
+        test_data_path = f"{self.save_dir}/{filename}"
+        record_path = f"{self.record_dir}/{filename}"
+        save_pixel_goal_visualization(image, pixel_goal, test_data_path, raw_coord=raw_coord)
+        shutil.copy2(test_data_path, record_path)
+        save_experiment_record_pages(self.record_dir, self.run_id, self.current_instruction)
+
     def reset(self):
         self.rgb_list = []
         self.depth_list = []
@@ -192,8 +331,7 @@ class InternVLAN1AsyncAgent:
         self.pixel_goal_rgb = None
         self.pixel_goal_depth = None
 
-        self.save_dir = "test_data/" + datetime.now().strftime("%Y%m%d_%H%M%S")
-        os.makedirs(self.save_dir, exist_ok=True)
+        self._start_new_run()
 
     def parse_actions(self, output):
         action_patterns = '|'.join(re.escape(action) for action in self.actions2idx)
@@ -257,6 +395,7 @@ class InternVLAN1AsyncAgent:
         return dual_sys_output
 
     def step_s2(self, rgb, depth, pose, instruction, intrinsic, look_down=False):
+        self._save_run_instruction(instruction)
         raw_image = Image.fromarray(rgb).convert('RGB')
         image = raw_image.copy()
         if not look_down:
@@ -327,8 +466,7 @@ class InternVLAN1AsyncAgent:
         self.llm_output = self.processor.tokenizer.decode(
             output_ids[0][inputs.input_ids.shape[1] :], skip_special_tokens=True
         )
-        with open(f"{self.save_dir}/llm_output_{self.episode_idx: 04d}.txt", 'w') as f:
-            f.write(self.llm_output)
+        self._save_llm_output()
         self.last_output_ids = copy.deepcopy(output_ids[0])
         self.past_key_values = copy.deepcopy(outputs.past_key_values)
         print(f"output {self.episode_idx}  {self.llm_output} cost: {t1 - t0}s")
@@ -336,12 +474,7 @@ class InternVLAN1AsyncAgent:
             coord = [int(c) for c in re.findall(r'\d+', self.llm_output)]
             pixel_goal = [int(coord[1]), int(coord[0])]
             suffix = "_look_down" if look_down else ""
-            save_pixel_goal_visualization(
-                raw_image,
-                pixel_goal,
-                f"{self.save_dir}/pixel_goal_vis_{self.episode_idx:04d}{suffix}.jpg",
-                raw_coord=coord[:2],
-            )
+            self._save_pixel_goal_visualization(raw_image, pixel_goal, coord[:2], suffix)
             image_grid_thw = torch.cat([thw.unsqueeze(0) for thw in inputs.image_grid_thw], dim=0)
             pixel_values = inputs.pixel_values
             t0 = time.time()
