@@ -14,7 +14,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from collections import OrderedDict
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from transformers import AutoProcessor
 
 from internnav.model.basemodel.internvla_n1.internvla_n1 import InternVLAN1ForCausalLM
@@ -23,10 +23,103 @@ from internnav.model.utils.vln_utils import S2Output, split_and_clean, traj_to_a
 DEFAULT_IMAGE_TOKEN = "<image>"
 
 
+def _load_visual_font(size, bold=False):
+    font_paths = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc" if bold else "",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]
+    for font_path in font_paths:
+        if font_path and os.path.exists(font_path):
+            return ImageFont.truetype(font_path, size)
+    return ImageFont.load_default()
+
+
+def _text_size(draw, text, font):
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def _to_pixel(point):
+    if point is None or len(point) < 2:
+        return None
+    return [int(round(float(point[0]))), int(round(float(point[1])))]
+
+
+def _point_in_bounds(point, width, height):
+    return point is not None and 0 <= point[0] < width and 0 <= point[1] < height
+
+
+def _choose_visual_point(pixel_goal, raw_coord, width, height):
+    raw_point = _to_pixel(raw_coord)
+    swapped_point = _to_pixel(pixel_goal)
+    if _point_in_bounds(raw_point, width, height):
+        return raw_point
+    if _point_in_bounds(swapped_point, width, height):
+        return swapped_point
+
+    point = raw_point or swapped_point or [width // 2, height // 2]
+    return [min(max(point[0], 0), width - 1), min(max(point[1], 0), height - 1)]
+
+
+def save_pixel_goal_visualization(image, pixel_goal, output_path, raw_coord=None):
+    base_image = image.convert("RGB")
+    width, height = base_image.size
+    x, y = _choose_visual_point(pixel_goal, raw_coord, width, height)
+
+    draw = ImageDraw.Draw(base_image)
+    red = (238, 18, 24)
+    line_width = max(3, width // 180)
+    radius = max(8, width // 55)
+    gap = max(4, radius // 2)
+    arm = max(18, radius * 2)
+
+    draw.line((x - arm, y, x - gap, y), fill=red, width=line_width)
+    draw.line((x + gap, y, x + arm, y), fill=red, width=line_width)
+    draw.line((x, y - arm, x, y - gap), fill=red, width=line_width)
+    draw.line((x, y + gap, x, y + arm), fill=red, width=line_width)
+    draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=red)
+    inner_radius = max(4, radius - line_width - 2)
+    draw.ellipse((x - inner_radius, y - inner_radius, x + inner_radius, y + inner_radius), fill=(255, 255, 255))
+    center_radius = max(2, radius // 4)
+    draw.ellipse((x - center_radius, y - center_radius, x + center_radius, y + center_radius), fill=red)
+
+    footer_height = max(62, height // 8)
+    canvas = Image.new("RGB", (width, height + footer_height), (255, 255, 255))
+    canvas.paste(base_image, (0, 0))
+    canvas_draw = ImageDraw.Draw(canvas)
+    canvas_draw.rectangle((0, 0, width - 1, height + footer_height - 1), outline=(220, 220, 220), width=2)
+
+    label = "模型输出:"
+    coord_text = f"({x},{y})"
+    label_font = _load_visual_font(max(18, min(30, width // 22)), bold=True)
+    coord_font = _load_visual_font(max(18, min(30, width // 22)), bold=True)
+    label_w, label_h = _text_size(canvas_draw, label, label_font)
+    coord_w, coord_h = _text_size(canvas_draw, coord_text, coord_font)
+
+    margin = max(12, width // 40)
+    text_y = height + (footer_height - max(label_h, coord_h)) // 2
+    canvas_draw.text((margin, text_y), label, fill=(30, 30, 30), font=label_font)
+
+    pill_pad_x = max(14, width // 45)
+    pill_pad_y = max(8, footer_height // 7)
+    pill_w = coord_w + pill_pad_x * 2
+    pill_h = coord_h + pill_pad_y * 2
+    pill_x = min(width - pill_w - margin, margin + label_w + max(16, width // 30))
+    pill_y = height + (footer_height - pill_h) // 2
+    canvas_draw.rounded_rectangle((pill_x, pill_y, pill_x + pill_w, pill_y + pill_h), radius=10, fill=red)
+    canvas_draw.text((pill_x + pill_pad_x, pill_y + pill_pad_y - 1), coord_text, fill=(255, 255, 255), font=coord_font)
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    canvas.save(output_path, quality=95)
+
+
 class InternVLAN1AsyncAgent:
     def __init__(self, args):
         self.device = torch.device(args.device)
         self.save_dir = "test_data/" + datetime.now().strftime("%Y%m%d_%H%M%S")
+        os.makedirs(self.save_dir, exist_ok=True)
         print(f"args.model_path{args.model_path}")
         self.model = InternVLAN1ForCausalLM.from_pretrained(
             args.model_path,
@@ -164,7 +257,8 @@ class InternVLAN1AsyncAgent:
         return dual_sys_output
 
     def step_s2(self, rgb, depth, pose, instruction, intrinsic, look_down=False):
-        image = Image.fromarray(rgb).convert('RGB')
+        raw_image = Image.fromarray(rgb).convert('RGB')
+        image = raw_image.copy()
         if not look_down:
             image = image.resize((self.resize_w, self.resize_h))
             self.rgb_list.append(image)
@@ -241,6 +335,13 @@ class InternVLAN1AsyncAgent:
         if bool(re.search(r'\d', self.llm_output)):
             coord = [int(c) for c in re.findall(r'\d+', self.llm_output)]
             pixel_goal = [int(coord[1]), int(coord[0])]
+            suffix = "_look_down" if look_down else ""
+            save_pixel_goal_visualization(
+                raw_image,
+                pixel_goal,
+                f"{self.save_dir}/pixel_goal_vis_{self.episode_idx:04d}{suffix}.jpg",
+                raw_coord=coord[:2],
+            )
             image_grid_thw = torch.cat([thw.unsqueeze(0) for thw in inputs.image_grid_thw], dim=0)
             pixel_values = inputs.pixel_values
             t0 = time.time()

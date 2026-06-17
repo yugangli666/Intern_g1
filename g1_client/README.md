@@ -42,6 +42,12 @@ bash g1_client/workstation_run_server_dualvln.sh
 
 The model is not downloaded by this setup.
 
+Pixel-goal visualization records are saved on the workstation under:
+
+```bash
+/home/ubuntu/InternNav/test_data/<timestamp>/pixel_goal_vis_*.jpg
+```
+
 ## G1 Robot PC
 
 The PDF guide assumes ROS2 and Unitree packages are available on the robot PC:
