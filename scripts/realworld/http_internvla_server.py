@@ -1,19 +1,78 @@
 import argparse
+import atexit
 import json
 import os
 import time
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 from flask import Flask, jsonify, request
 from PIL import Image
 
+from g1_client.utils.navigation_logger import NavigationLogger
 from internnav.agent.internvla_n1_agent_realworld import InternVLAN1AsyncAgent
 
 app = Flask(__name__)
 idx = 0
 start_time = time.time()
 output_dir = ''
+server_logger = None
+
+
+def summarize_server_response(json_output):
+    if "trajectory" in json_output:
+        trajectory = json_output.get("trajectory") or []
+        summary = {"type": "trajectory", "trajectory_points": len(trajectory)}
+        if trajectory:
+            summary["last_point"] = trajectory[-1]
+        if "pixel_goal" in json_output:
+            summary["pixel_goal"] = json_output.get("pixel_goal")
+        return summary
+    if "discrete_action" in json_output:
+        return {"type": "discrete_action", "discrete_action": json_output.get("discrete_action")}
+    return json_output
+
+
+def start_server_logger(instruction):
+    global server_logger
+    if getattr(args, "disable_server_logging", False):
+        return
+
+    if server_logger is not None:
+        server_logger.finalize(notes="Server-side log finalized when a new reset request arrived.")
+
+    model_name = Path(args.model_path).name
+    server_logger = NavigationLogger(
+        log_root=args.server_log_dir,
+        instruction=instruction,
+        model_name=model_name,
+        robot="Unitree G1",
+        camera="RealSense D455",
+        server_url=f"http://{args.host}:{args.port}/eval_dual",
+    )
+
+
+def log_server_step(image, depth, json_output, generate_time_ms):
+    if server_logger is None:
+        return
+    server_logger.log_step(
+        rgb_image=image,
+        depth_image=depth,
+        model_response=summarize_server_response(json_output),
+        model_action=summarize_server_response(json_output),
+        executed_action={
+            "returned_to_g1": json_output,
+            "note": "Server-side log records the command returned to G1; final robot execution is observed on the G1 client.",
+        },
+        raw_response=json_output,
+        latency_ms=generate_time_ms,
+    )
+
+
+def finalize_server_logger_at_exit():
+    if server_logger is not None:
+        server_logger.finalize(notes="Server process exited.")
 
 
 @app.route("/eval_dual", methods=['POST'])
@@ -45,7 +104,10 @@ def eval_dual():
         output_dir = 'output/runs' + datetime.now().strftime('%m-%d-%H%M')
         os.makedirs(output_dir, exist_ok=True)
         print("init reset model!!!")
+        start_server_logger(instruction)
         agent.reset()
+    elif server_logger is None:
+        start_server_logger(instruction)
 
     idx += 1
 
@@ -74,6 +136,7 @@ def eval_dual():
     generate_time = t1 - t0
     print(f"dual sys step {generate_time}")
     print(f"json_output {json_output}")
+    log_server_step(image, depth, json_output, generate_time * 1000.0)
     return jsonify(json_output)
 
 
@@ -98,7 +161,10 @@ if __name__ == '__main__':
     parser.add_argument("--host", type=str, default="0.0.0.0")
     parser.add_argument("--port", type=int, default=5801)
     parser.add_argument("--skip_warmup", action="store_true")
+    parser.add_argument("--server_log_dir", type=str, default="g1_server_logs")
+    parser.add_argument("--disable_server_logging", action="store_true")
     args = parser.parse_args()
+    atexit.register(finalize_server_logger_at_exit)
 
     args.camera_intrinsic = np.array(
         [[386.5, 0.0, 328.9, 0.0], [0.0, 386.5, 244, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]

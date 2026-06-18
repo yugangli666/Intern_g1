@@ -144,6 +144,7 @@ nohup.out
 wandb/
 logs/
 test_data/
+g1_server_logs/
 experiment_records/*
 !experiment_records/.gitkeep
 

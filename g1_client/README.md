@@ -57,6 +57,24 @@ Auto-generated experiment record pages are saved under:
 /home/ubuntu/InternNav/experiment_records/<timestamp>/experiment_record_*.jpg
 ```
 
+The workstation server also mirrors the G1 request/response process under:
+
+```bash
+/home/ubuntu/InternNav/g1_server_logs/run_YYYYMMDD_HHMMSS/
+```
+
+Each server-side run folder contains:
+
+```text
+rgb/
+depth/
+actions.jsonl
+meta.json
+result.txt
+```
+
+This server-side log records the RGB/depth frames received from G1 and the model command returned to G1. The final robot-side execution and manual success/failure annotation remain in the G1 client log.
+
 ## G1 Robot PC
 
 The PDF guide assumes ROS2 and Unitree packages are available on the robot PC:
