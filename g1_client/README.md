@@ -135,6 +135,7 @@ Run the client:
 ```bash
 bash run_g1_client.sh \
   --server_url http://192.168.0.170:5801/eval_dual \
+  --model-name InternVLA-N1-DualVLN \
   --instruction "move forward until you are close to the chair, then turn right to face the door and enter the room. Then stop when you are close to the table."
 ```
 
@@ -144,6 +145,7 @@ Run the client with explicit logging enabled:
 cd /home/unitree/Intern_g1/g1_client
 bash run_g1_client.sh \
   --server_url http://192.168.0.170:5801/eval_dual \
+  --model-name InternVLA-N1-DualVLN \
   --instruction "Move forward past the dark cabinet and stop at the glass door." \
   --log-dir ./logs
 ```
@@ -158,6 +160,14 @@ logs/run_YYYYMMDD_HHMMSS/
   meta.json
   result.txt
 ```
+
+The client treats `discrete_action == [0]` as an explicit STOP command: it clears the active PID/MPC target and sends zero velocity to the G1. It also stops safely after repeated `[3, 3, 3, 3]` right-turn outputs; the default threshold is 6 consecutive outputs:
+
+```bash
+--right-turn-stop-count 6
+```
+
+Set `--right-turn-stop-count 0` to disable this safety stop.
 
 After the client exits, it asks:
 

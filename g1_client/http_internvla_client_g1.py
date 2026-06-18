@@ -3,6 +3,7 @@ import copy
 import io
 import json
 import math
+import os
 import sys
 import threading
 import time
@@ -44,6 +45,8 @@ current_control_mode = ControlMode.MPC_Mode
 trajs_in_world = None
 last_http_latency_ms = None
 last_http_raw_response = None
+navigation_stop_requested = False
+consecutive_right_turn_count = 0
 
 desired_v, desired_w = 0.0, 0.0
 rgb_depth_rw_lock = ReadWriteLock()
@@ -129,11 +132,45 @@ def log_navigation_step(
     )
 
 
+def stop_navigation(reason, actions=None, right_turn_count=None):
+    global navigation_stop_requested, current_control_mode, mpc, trajs_in_world, desired_v, desired_w
+
+    navigation_stop_requested = True
+    desired_v, desired_w = 0.0, 0.0
+    current_control_mode = ControlMode.PID_Mode
+    mpc = None
+    trajs_in_world = None
+
+    if manager is not None:
+        manager.last_trajs_in_world = None
+        if manager.homo_odom is not None:
+            manager.homo_goal = manager.homo_odom.copy()
+        manager.move(0.0, 0.0, 0.0)
+
+    executed_action = {
+        "control_mode": "STOP",
+        "status": reason,
+        "actions": actions,
+        "stop_command": [0.0, 0.0, 0.0],
+    }
+    if right_turn_count is not None:
+        executed_action["right_turn_count"] = right_turn_count
+    print(f"[PLANNING] Navigation stopped: {executed_action}")
+    return executed_action
+
+
 def control_thread():
     global desired_v, desired_w, current_control_mode
 
     while rclpy.ok():
         try:
+            if navigation_stop_requested:
+                desired_v, desired_w = 0.0, 0.0
+                if manager is not None:
+                    manager.move(0.0, 0.0, 0.0)
+                time.sleep(runtime_args.control_interval)
+                continue
+
             if current_control_mode == ControlMode.MPC_Mode:
                 odom_rw_lock.acquire_read()
                 odom = manager.odom.copy() if manager and manager.odom else None
@@ -166,7 +203,7 @@ def control_thread():
 
 
 def planning_thread():
-    global current_control_mode, mpc, trajs_in_world
+    global current_control_mode, mpc, trajs_in_world, consecutive_right_turn_count
 
     while rclpy.ok():
         start_time = time.time()
@@ -203,6 +240,10 @@ def planning_thread():
             time.sleep(0.1)
             continue
 
+        if navigation_stop_requested:
+            time.sleep(0.1)
+            continue
+
         try:
             response = dual_sys_eval(rgb_bytes, depth_bytes)
         except Exception as exc:
@@ -222,6 +263,7 @@ def planning_thread():
         model_action = None
         executed_action = None
         if "trajectory" in response:
+            consecutive_right_turn_count = 0
             trajectory = response["trajectory"]
             model_action = {
                 "type": "trajectory",
@@ -295,15 +337,34 @@ def planning_thread():
         elif "discrete_action" in response:
             actions = response["discrete_action"]
             model_action = {"type": "discrete_action", "actions": actions}
-            if actions != [5] and actions != [9]:
-                manager.incremental_change_goal(actions)
-                current_control_mode = ControlMode.PID_Mode
-                executed_action = {
-                    "control_mode": current_control_mode.name,
-                    "goal_update": actions,
-                }
-                print(f"[PLANNING] PID action updated: {actions}")
+            if actions == [0]:
+                consecutive_right_turn_count = 0
+                executed_action = stop_navigation("model_stop", actions=actions)
+            elif actions != [5] and actions != [9]:
+                if actions == [3, 3, 3, 3]:
+                    consecutive_right_turn_count += 1
+                else:
+                    consecutive_right_turn_count = 0
+
+                if (
+                    runtime_args.right_turn_stop_count > 0
+                    and consecutive_right_turn_count >= runtime_args.right_turn_stop_count
+                ):
+                    executed_action = stop_navigation(
+                        "safety_repeated_right_turn",
+                        actions=actions,
+                        right_turn_count=consecutive_right_turn_count,
+                    )
+                else:
+                    manager.incremental_change_goal(actions)
+                    current_control_mode = ControlMode.PID_Mode
+                    executed_action = {
+                        "control_mode": current_control_mode.name,
+                        "goal_update": actions,
+                    }
+                    print(f"[PLANNING] PID action updated: {actions}")
             else:
+                consecutive_right_turn_count = 0
                 executed_action = {
                     "control_mode": current_control_mode.name,
                     "goal_update": None,
@@ -311,6 +372,7 @@ def planning_thread():
                     "actions": actions,
                 }
         else:
+            consecutive_right_turn_count = 0
             executed_action = {
                 "control_mode": current_control_mode.name,
                 "status": "unrecognized_response",
@@ -531,6 +593,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="InternNav G1 real-world client")
     parser.add_argument("--server_url", default="http://192.168.0.170:5801/eval_dual")
     parser.add_argument("--instruction", required=True)
+    parser.add_argument(
+        "--model-name",
+        "--model_name",
+        dest="model_name",
+        default=os.environ.get("INTERNNAV_MODEL_NAME", "InternVLA-N1-DualVLN"),
+    )
     parser.add_argument("--log-dir", default="./logs")
     parser.add_argument("--rgb_topic", default="/camera/camera/color/image_raw")
     parser.add_argument("--depth_topic", default="/camera/camera/aligned_depth_to_color/image_raw")
@@ -556,6 +624,14 @@ def parse_args():
     parser.add_argument("--move_api_id", type=int, default=7105)
     parser.add_argument("--discrete_step", type=float, default=0.25)
     parser.add_argument("--discrete_turn_deg", type=float, default=15.0)
+    parser.add_argument(
+        "--right-turn-stop-count",
+        "--right_turn_stop_count",
+        dest="right_turn_stop_count",
+        type=int,
+        default=6,
+        help="Stop safely after this many consecutive [3,3,3,3] right-turn actions. Set 0 to disable.",
+    )
     parser.add_argument("--init_robot", action="store_true")
     return parser.parse_args()
 
@@ -611,7 +687,7 @@ def main():
     navigation_logger = NavigationLogger(
         log_root=runtime_args.log_dir,
         instruction=runtime_args.instruction,
-        model_name="InternVLA-N1-w-NavDP",
+        model_name=runtime_args.model_name,
         robot="Unitree G1",
         camera="RealSense D455",
         server_url=runtime_args.server_url,
