@@ -17,5 +17,9 @@ if [ -f "$HOME/ros2_ws/install/setup.bash" ]; then
   set -u
 fi
 
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/dds_interface.sh"
+configure_cyclonedds_interface
+
 cd "$SCRIPT_DIR"
 python3 "$SCRIPT_DIR/http_internvla_client_g1.py" "$@"

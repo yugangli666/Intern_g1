@@ -10,6 +10,8 @@ This folder contains the files intended to be copied to the Unitree G1 robot PC.
 - `utils/navigation_logger.py`: automatic run logger and manual annotation helper.
 - `requirements_g1.txt`: Python packages that are not provided by ROS2/Unitree.
 - `run_g1_client.sh`: convenience launcher for the robot PC.
+- `run_d455_camera.sh`: convenience launcher for an Intel RealSense D455.
+- `dds_interface.sh`: shared CycloneDDS network-interface selection helper.
 - `workstation_run_server_navdp.sh`: workstation-side reference command for `InternVLA-N1-w-NavDP`; this file is not required on G1.
 - `workstation_run_server_dualvln.sh`: workstation-side reference command for `InternVLA-N1-DualVLN`; this file is not required on G1.
 
@@ -93,6 +95,12 @@ Start an Intel RealSense D455 on the G1:
 
 ```bash
 bash run_d455_camera.sh
+```
+
+The D455 launcher defaults to `640x480x15`. To override profiles:
+
+```bash
+REALSENSE_COLOR_PROFILE=640x480x30 REALSENSE_DEPTH_PROFILE=640x480x30 bash run_d455_camera.sh
 ```
 
 Run the client:
