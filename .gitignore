@@ -145,6 +145,7 @@ wandb/
 logs/
 test_data/
 g1_server_logs/
+g1_logs_from_g1/
 experiment_records/*
 !experiment_records/.gitkeep
 

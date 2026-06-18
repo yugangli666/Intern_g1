@@ -57,13 +57,13 @@ Auto-generated experiment record pages are saved under:
 /home/ubuntu/InternNav/experiment_records/<timestamp>/experiment_record_*.jpg
 ```
 
-The workstation server also mirrors the G1 request/response process under:
+When `workstation_run_server_dualvln.sh` exits, including after Ctrl+C, it tries to pull the G1 client logs back to the workstation:
 
 ```bash
-/home/ubuntu/InternNav/g1_server_logs/run_YYYYMMDD_HHMMSS/
+/home/ubuntu/InternNav/g1_logs_from_g1/run_YYYYMMDD_HHMMSS/
 ```
 
-Each server-side run folder contains:
+The pulled G1 run folders contain:
 
 ```text
 rgb/
@@ -73,7 +73,16 @@ meta.json
 result.txt
 ```
 
-This server-side log records the RGB/depth frames received from G1 and the model command returned to G1. The final robot-side execution and manual success/failure annotation remain in the G1 client log.
+The DualVLN workstation script uses `rsync -avz` by default and falls back to `scp -r` if needed. Override the G1 connection if your robot IP is different:
+
+```bash
+G1_LOG_REMOTE=unitree@192.168.1.161 \
+G1_LOG_SOURCE=/home/unitree/Intern_g1/g1_client/logs/ \
+G1_LOG_DEST=/home/ubuntu/InternNav/g1_logs_from_g1 \
+bash g1_client/workstation_run_server_dualvln.sh
+```
+
+Set `G1_LOG_SYNC=0` to skip pulling logs after server shutdown.
 
 ## G1 Robot PC
 
