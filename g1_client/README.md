@@ -7,6 +7,7 @@ This folder contains the files intended to be copied to the Unitree G1 robot PC.
 - `http_internvla_client_g1.py`: ROS2 client for G1 real-world navigation.
 - `controllers.py`: PID and MPC controller helpers.
 - `thread_utils.py`: reader/writer lock helper.
+- `utils/navigation_logger.py`: automatic run logger and manual annotation helper.
 - `requirements_g1.txt`: Python packages that are not provided by ROS2/Unitree.
 - `run_g1_client.sh`: convenience launcher for the robot PC.
 - `workstation_run_server_navdp.sh`: workstation-side reference command for `InternVLA-N1-w-NavDP`; this file is not required on G1.
@@ -100,6 +101,49 @@ Run the client:
 bash run_g1_client.sh \
   --server_url http://192.168.0.170:5801/eval_dual \
   --instruction "move forward until you are close to the chair, then turn right to face the door and enter the room. Then stop when you are close to the table."
+```
+
+Run the client with explicit logging enabled:
+
+```bash
+cd /home/unitree/Intern_g1/g1_client
+bash run_g1_client.sh \
+  --server_url http://192.168.0.170:5801/eval_dual \
+  --instruction "Move forward past the dark cabinet and stop at the glass door." \
+  --log-dir ./logs
+```
+
+Each run creates:
+
+```text
+logs/run_YYYYMMDD_HHMMSS/
+  rgb/000001.jpg
+  depth/000001.png
+  actions.jsonl
+  meta.json
+  result.txt
+```
+
+After the client exits, it asks:
+
+```text
+Was the navigation successful? [y/n/skip]:
+```
+
+If the run failed, choose one fixed failure type:
+
+```text
+target_misrecognition: The model recognized the wrong target object or landmark.
+wrong_turn: The robot turned in the wrong direction.
+early_stop: The robot stopped too early before reaching the target.
+late_stop: The robot stopped too late after passing the target.
+no_stop: The robot did not stop when it should have stopped.
+collision_risk: The robot moved too close to obstacles or had collision risk.
+unstable_motion: The robot motion was unstable, shaking, drifting, or not smooth.
+depth_error: The failure seems related to wrong depth perception or obstacle distance estimation.
+instruction_error: The model misunderstood the language instruction.
+system_error: The failure was caused by camera, network, server, ROS, DDS, or control issues.
+other: The failure does not fit the above categories.
 ```
 
 If your topics differ, pass them explicitly:

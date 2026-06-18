@@ -17,4 +17,5 @@ if [ -f "$HOME/ros2_ws/install/setup.bash" ]; then
   set -u
 fi
 
+cd "$SCRIPT_DIR"
 python3 "$SCRIPT_DIR/http_internvla_client_g1.py" "$@"

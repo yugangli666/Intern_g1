@@ -3,6 +3,7 @@ import copy
 import io
 import json
 import math
+import sys
 import threading
 import time
 from collections import deque
@@ -23,6 +24,7 @@ from unitree_go.msg import SportModeState
 
 from controllers import Mpc_controller, PID_controller
 from thread_utils import ReadWriteLock
+from utils.navigation_logger import FAILURE_TYPES, NavigationLogger
 
 
 class ControlMode(Enum):
@@ -37,8 +39,11 @@ http_idx = -1
 first_running_time = 0.0
 manager = None
 runtime_args = None
+navigation_logger = None
 current_control_mode = ControlMode.MPC_Mode
 trajs_in_world = None
+last_http_latency_ms = None
+last_http_raw_response = None
 
 desired_v, desired_w = 0.0, 0.0
 rgb_depth_rw_lock = ReadWriteLock()
@@ -55,7 +60,7 @@ def clamp(value, min_value, max_value):
 
 
 def dual_sys_eval(image_bytes, depth_bytes):
-    global policy_init, http_idx, first_running_time
+    global policy_init, http_idx, first_running_time, last_http_latency_ms, last_http_raw_response
 
     data = {
         "reset": policy_init,
@@ -68,18 +73,60 @@ def dual_sys_eval(image_bytes, depth_bytes):
         "depth": ("depth_image", depth_bytes, "image/png"),
     }
     start = time.time()
+    last_http_latency_ms = None
+    last_http_raw_response = None
     response = requests.post(
         runtime_args.server_url,
         files=files,
         data={"json": json.dumps(data)},
         timeout=runtime_args.http_timeout,
     )
+    last_http_latency_ms = (time.time() - start) * 1000.0
+    last_http_raw_response = response.text
     response.raise_for_status()
     http_idx += 1
     if http_idx == 0:
         first_running_time = time.time()
     print(f"[HTTP] idx={http_idx} cost={time.time() - start:.3f}s response={response.text}")
     return response.json()
+
+
+def summarize_model_response(response):
+    if not isinstance(response, dict):
+        return response
+    if "trajectory" in response:
+        trajectory = response.get("trajectory") or []
+        summary = {"type": "trajectory", "trajectory_points": len(trajectory)}
+        if trajectory:
+            summary["last_point"] = trajectory[-1]
+        if "pixel_goal" in response:
+            summary["pixel_goal"] = response.get("pixel_goal")
+        return summary
+    if "discrete_action" in response:
+        return {"type": "discrete_action", "discrete_action": response.get("discrete_action")}
+    return response
+
+
+def log_navigation_step(
+    rgb_image,
+    depth_image,
+    response=None,
+    model_action=None,
+    executed_action=None,
+    raw_response=None,
+    latency_ms=None,
+):
+    if navigation_logger is None:
+        return
+    navigation_logger.log_step(
+        rgb_image=rgb_image,
+        depth_image=depth_image,
+        model_response=summarize_model_response(response),
+        model_action=model_action,
+        executed_action=executed_action,
+        raw_response=raw_response,
+        latency_ms=latency_ms,
+    )
 
 
 def control_thread():
@@ -133,6 +180,8 @@ def planning_thread():
         rgb_depth_rw_lock.acquire_read()
         rgb_bytes = copy.deepcopy(manager.rgb_bytes)
         depth_bytes = copy.deepcopy(manager.depth_bytes)
+        rgb_image = copy.deepcopy(manager.rgb_image)
+        depth_image = copy.deepcopy(manager.depth_image)
         rgb_time = manager.rgb_time
         rgb_depth_rw_lock.release_read()
 
@@ -158,13 +207,38 @@ def planning_thread():
             response = dual_sys_eval(rgb_bytes, depth_bytes)
         except Exception as exc:
             print(f"[HTTP] request failed: {exc}")
+            log_navigation_step(
+                rgb_image,
+                depth_image,
+                response=None,
+                model_action=None,
+                executed_action=None,
+                raw_response=last_http_raw_response or str(exc),
+                latency_ms=last_http_latency_ms or (time.time() - start_time) * 1000.0,
+            )
             time.sleep(0.5)
             continue
 
+        model_action = None
+        executed_action = None
         if "trajectory" in response:
             trajectory = response["trajectory"]
+            model_action = {
+                "type": "trajectory",
+                "trajectory_points": len(trajectory),
+                "last_point": trajectory[-1] if trajectory else None,
+            }
             if len(trajectory) <= 4:
                 print("[PLANNING] trajectory too short, skip MPC update")
+                log_navigation_step(
+                    rgb_image,
+                    depth_image,
+                    response=response,
+                    model_action=model_action,
+                    executed_action="skip_mpc_update: trajectory_too_short",
+                    raw_response=last_http_raw_response,
+                    latency_ms=last_http_latency_ms,
+                )
                 continue
 
             odom = odom_infer
@@ -187,6 +261,15 @@ def planning_thread():
             trajs_in_world = np.array(world_traj)
             if trajs_in_world.shape[0] < 2:
                 print("[PLANNING] world trajectory too short, skip MPC update")
+                log_navigation_step(
+                    rgb_image,
+                    depth_image,
+                    response=response,
+                    model_action=model_action,
+                    executed_action="skip_mpc_update: world_trajectory_too_short",
+                    raw_response=last_http_raw_response,
+                    latency_ms=last_http_latency_ms,
+                )
                 continue
 
             manager.last_trajs_in_world = trajs_in_world
@@ -203,14 +286,45 @@ def planning_thread():
             manager.request_cnt += 1
             mpc_rw_lock.release_write()
             current_control_mode = ControlMode.MPC_Mode
+            executed_action = {
+                "control_mode": current_control_mode.name,
+                "world_trajectory_points": int(trajs_in_world.shape[0]),
+            }
             print(f"[PLANNING] MPC trajectory updated, len={np.linalg.norm(trajectory[-1][:2]):.3f}")
 
         elif "discrete_action" in response:
             actions = response["discrete_action"]
+            model_action = {"type": "discrete_action", "actions": actions}
             if actions != [5] and actions != [9]:
                 manager.incremental_change_goal(actions)
                 current_control_mode = ControlMode.PID_Mode
+                executed_action = {
+                    "control_mode": current_control_mode.name,
+                    "goal_update": actions,
+                }
                 print(f"[PLANNING] PID action updated: {actions}")
+            else:
+                executed_action = {
+                    "control_mode": current_control_mode.name,
+                    "goal_update": None,
+                    "status": "discrete_action_ignored_by_existing_logic",
+                    "actions": actions,
+                }
+        else:
+            executed_action = {
+                "control_mode": current_control_mode.name,
+                "status": "unrecognized_response",
+            }
+
+        log_navigation_step(
+            rgb_image,
+            depth_image,
+            response=response,
+            model_action=model_action,
+            executed_action=executed_action,
+            raw_response=last_http_raw_response,
+            latency_ms=last_http_latency_ms,
+        )
 
         time.sleep(max(0, runtime_args.plan_period - (time.time() - start_time)))
 
@@ -417,6 +531,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="InternNav G1 real-world client")
     parser.add_argument("--server_url", default="http://192.168.0.170:5801/eval_dual")
     parser.add_argument("--instruction", required=True)
+    parser.add_argument("--log-dir", default="./logs")
     parser.add_argument("--rgb_topic", default="/camera/camera/color/image_raw")
     parser.add_argument("--depth_topic", default="/camera/camera/aligned_depth_to_color/image_raw")
     parser.add_argument("--odom_topic", default="/lf/odommodestate")
@@ -445,9 +560,62 @@ def parse_args():
     return parser.parse_args()
 
 
+def ask_manual_annotation():
+    if not sys.stdin.isatty():
+        print("[LOG] Non-interactive terminal; skipping manual annotation.")
+        return None, None, ""
+
+    try:
+        answer = input("Was the navigation successful? [y/n/skip]: ").strip().lower()
+    except Exception as exc:
+        print(f"[LOG][WARN] Manual annotation failed: {exc}")
+        return None, None, ""
+
+    if answer in ("y", "yes"):
+        return True, None, ""
+
+    if answer in ("n", "no"):
+        failure_options = list(FAILURE_TYPES.keys())
+        print("Choose failure_type:")
+        for idx, failure_type in enumerate(failure_options, 1):
+            print(f"{idx}. {failure_type} - {FAILURE_TYPES[failure_type]}")
+
+        failure_type = None
+        try:
+            choice = input("Failure type [1-11]: ").strip()
+            if choice.isdigit():
+                index = int(choice) - 1
+                if 0 <= index < len(failure_options):
+                    failure_type = failure_options[index]
+            elif choice in FAILURE_TYPES:
+                failure_type = choice
+            if failure_type is None:
+                print("[LOG][WARN] Invalid failure_type, saving it as null.")
+            notes = input("Notes: ").strip()
+        except Exception as exc:
+            print(f"[LOG][WARN] Manual annotation failed: {exc}")
+            notes = ""
+        return False, failure_type, notes
+
+    notes = ""
+    try:
+        notes = input("Notes (optional): ").strip()
+    except Exception:
+        notes = ""
+    return None, None, notes
+
+
 def main():
-    global manager, runtime_args, pid
+    global manager, runtime_args, pid, navigation_logger
     runtime_args = parse_args()
+    navigation_logger = NavigationLogger(
+        log_root=runtime_args.log_dir,
+        instruction=runtime_args.instruction,
+        model_name="InternVLA-N1-w-NavDP",
+        robot="Unitree G1",
+        camera="RealSense D455",
+        server_url=runtime_args.server_url,
+    )
     pid = PID_controller(
         Kp_trans=2.0,
         Kd_trans=0.0,
@@ -475,11 +643,20 @@ def main():
     except KeyboardInterrupt:
         print("\n[MAIN] Ctrl+C received, stopping G1.")
     finally:
-        if manager is not None:
-            manager.move(0.0, 0.0, 0.0)
-            time.sleep(0.5)
-            manager.destroy_node()
-        rclpy.shutdown()
+        try:
+            if manager is not None:
+                manager.move(0.0, 0.0, 0.0)
+                time.sleep(0.5)
+                manager.destroy_node()
+        except Exception as exc:
+            print(f"[MAIN][WARN] Failed during G1 shutdown: {exc}")
+        try:
+            rclpy.shutdown()
+        except Exception as exc:
+            print(f"[MAIN][WARN] Failed during ROS shutdown: {exc}")
+        success, failure_type, notes = ask_manual_annotation()
+        if navigation_logger is not None:
+            navigation_logger.finalize(success=success, failure_type=failure_type, notes=notes)
         print("[MAIN] Shutdown complete.")
 
 
