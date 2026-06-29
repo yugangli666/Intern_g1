@@ -50,7 +50,10 @@ configure_cyclonedds_interface() {
   dds_interface="$(resolve_dds_interface)"
   if [ -n "$dds_interface" ]; then
     export UNITREE_DDS_INTERFACE="$dds_interface"
-    export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$dds_interface\" priority=\"default\" multicast=\"default\" /></Interfaces></General></Domain></CycloneDDS>"
+    # ROS 2 Foxy's bundled CycloneDDS rejects the newer
+    # General/Interfaces/NetworkInterface XML syntax.  The legacy
+    # NetworkInterfaceAddress form works with Foxy and later releases.
+    export CYCLONEDDS_URI="<CycloneDDS><Domain><General><NetworkInterfaceAddress>$dds_interface</NetworkInterfaceAddress></General></Domain></CycloneDDS>"
     echo "Using CycloneDDS interface: $dds_interface"
   else
     echo "Warning: no active DDS network interface found; keeping existing CycloneDDS config." >&2

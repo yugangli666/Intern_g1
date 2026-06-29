@@ -46,7 +46,9 @@ trajs_in_world = None
 last_http_latency_ms = None
 last_http_raw_response = None
 navigation_stop_requested = False
+navigation_hold_requested = False
 consecutive_right_turn_count = 0
+consecutive_stop_count = 0
 
 desired_v, desired_w = 0.0, 0.0
 rgb_depth_rw_lock = ReadWriteLock()
@@ -132,10 +134,16 @@ def log_navigation_step(
     )
 
 
-def stop_navigation(reason, actions=None, right_turn_count=None):
-    global navigation_stop_requested, current_control_mode, mpc, trajs_in_world, desired_v, desired_w
+def hold_navigation(reason, actions=None, stop_count=None):
+    """Immediately hold position, while allowing the next model response to recover.
 
-    navigation_stop_requested = True
+    Older G1 clients kept requesting after a single ``[0]`` response.  A one-off
+    stop is common when the model momentarily loses the target, so preserve that
+    recoverability without allowing a stale MPC/PID command to keep moving.
+    """
+    global navigation_hold_requested, current_control_mode, mpc, trajs_in_world, desired_v, desired_w
+
+    navigation_hold_requested = True
     desired_v, desired_w = 0.0, 0.0
     current_control_mode = ControlMode.PID_Mode
     mpc = None
@@ -145,18 +153,42 @@ def stop_navigation(reason, actions=None, right_turn_count=None):
         manager.last_trajs_in_world = None
         if manager.homo_odom is not None:
             manager.homo_goal = manager.homo_odom.copy()
-        manager.move(0.0, 0.0, 0.0)
+        if runtime_args.dry_run:
+            print("[PLANNING] DRY_RUN: hold_navigation — zero-velocity command BLOCKED.")
+        else:
+            manager.move(0.0, 0.0, 0.0)
 
     executed_action = {
-        "control_mode": "STOP",
+        "control_mode": "HOLD",
         "status": reason,
         "actions": actions,
         "stop_command": [0.0, 0.0, 0.0],
     }
+    if stop_count is not None:
+        executed_action["stop_count"] = stop_count
+    print(f"[PLANNING] Navigation holding: {executed_action}")
+    return executed_action
+
+
+def stop_navigation(reason, actions=None, stop_count=None, right_turn_count=None):
+    global navigation_stop_requested
+
+    executed_action = hold_navigation(reason, actions=actions, stop_count=stop_count)
+    navigation_stop_requested = True
+    executed_action["control_mode"] = "STOP"
     if right_turn_count is not None:
         executed_action["right_turn_count"] = right_turn_count
     print(f"[PLANNING] Navigation stopped: {executed_action}")
     return executed_action
+
+
+def clear_navigation_hold():
+    global navigation_hold_requested, consecutive_stop_count
+
+    if navigation_hold_requested:
+        print("[PLANNING] Model recovered from tentative STOP; resuming planning.")
+    navigation_hold_requested = False
+    consecutive_stop_count = 0
 
 
 def control_thread():
@@ -164,10 +196,13 @@ def control_thread():
 
     while rclpy.ok():
         try:
-            if navigation_stop_requested:
+            if navigation_stop_requested or navigation_hold_requested:
                 desired_v, desired_w = 0.0, 0.0
                 if manager is not None:
-                    manager.move(0.0, 0.0, 0.0)
+                    if runtime_args.dry_run:
+                        print("DRY_RUN: computed but not published  vx=0.000 vy=0.000 vyaw=0.000")
+                    else:
+                        manager.move(0.0, 0.0, 0.0)
                 time.sleep(runtime_args.control_interval)
                 continue
 
@@ -203,7 +238,7 @@ def control_thread():
 
 
 def planning_thread():
-    global current_control_mode, mpc, trajs_in_world, consecutive_right_turn_count
+    global current_control_mode, mpc, trajs_in_world, consecutive_right_turn_count, consecutive_stop_count
 
     while rclpy.ok():
         start_time = time.time()
@@ -263,6 +298,7 @@ def planning_thread():
         model_action = None
         executed_action = None
         if "trajectory" in response:
+            clear_navigation_hold()
             consecutive_right_turn_count = 0
             trajectory = response["trajectory"]
             model_action = {
@@ -339,8 +375,21 @@ def planning_thread():
             model_action = {"type": "discrete_action", "actions": actions}
             if actions == [0]:
                 consecutive_right_turn_count = 0
-                executed_action = stop_navigation("model_stop", actions=actions)
+                consecutive_stop_count += 1
+                if consecutive_stop_count >= runtime_args.stop_confirm_count:
+                    executed_action = stop_navigation(
+                        "model_stop_confirmed",
+                        actions=actions,
+                        stop_count=consecutive_stop_count,
+                    )
+                else:
+                    executed_action = hold_navigation(
+                        "model_stop_pending_confirmation",
+                        actions=actions,
+                        stop_count=consecutive_stop_count,
+                    )
             elif actions != [5] and actions != [9]:
+                clear_navigation_hold()
                 if actions == [3, 3, 3, 3]:
                     consecutive_right_turn_count += 1
                 else:
@@ -364,6 +413,7 @@ def planning_thread():
                     }
                     print(f"[PLANNING] PID action updated: {actions}")
             else:
+                clear_navigation_hold()
                 consecutive_right_turn_count = 0
                 executed_action = {
                     "control_mode": current_control_mode.name,
@@ -372,6 +422,7 @@ def planning_thread():
                     "actions": actions,
                 }
         else:
+            clear_navigation_hold()
             consecutive_right_turn_count = 0
             executed_action = {
                 "control_mode": current_control_mode.name,
@@ -397,10 +448,19 @@ class G1Manager(Node):
 
         qos_profile = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT, history=HistoryPolicy.KEEP_LAST, depth=10)
 
-        self.control_pub = self.create_publisher(Request, runtime_args.control_topic, 5)
-        self.cmd_vel_pub = None
-        if runtime_args.debug_cmd_vel_topic:
-            self.cmd_vel_pub = self.create_publisher(Twist, runtime_args.debug_cmd_vel_topic, 5)
+        # In dry-run mode we still subscribe to perception topics but MUST NOT
+        # create publishers that could send control messages.
+        if runtime_args.dry_run:
+            self.get_logger().info(
+                "DRY_RUN enabled — control publishers (/api/sport/request, /cmd_vel) are DISABLED."
+            )
+            self.control_pub = None
+            self.cmd_vel_pub = None
+        else:
+            self.control_pub = self.create_publisher(Request, runtime_args.control_topic, 5)
+            self.cmd_vel_pub = None
+            if runtime_args.debug_cmd_vel_topic:
+                self.cmd_vel_pub = self.create_publisher(Twist, runtime_args.debug_cmd_vel_topic, 5)
 
         rgb_sub = Subscriber(self, Image, runtime_args.rgb_topic)
         depth_sub = Subscriber(self, Image, runtime_args.depth_topic)
@@ -545,6 +605,13 @@ class G1Manager(Node):
         if abs(vyaw) < runtime_args.angular_deadband:
             vyaw = 0.0
 
+        if runtime_args.dry_run:
+            self.get_logger().info(
+                f"DRY_RUN: computed but not published  "
+                f"vx={vx:.3f} vy={vy:.3f} vyaw={vyaw:.3f}"
+            )
+            return
+
         cmd = {"velocity": [vx, vy, vyaw], "duration": runtime_args.command_duration}
         req_id = RequestIdentity()
         req_id.api_id = runtime_args.move_api_id
@@ -563,6 +630,11 @@ class G1Manager(Node):
             self.cmd_vel_pub.publish(twist)
 
     def send_fsm_command(self, fsm_id, api_id=7101):
+        if runtime_args.dry_run:
+            self.get_logger().info(
+                f"DRY_RUN: FSM command blocked  fsm_id={fsm_id} api_id={api_id}"
+            )
+            return
         cmd = {"data": fsm_id}
         req_id = RequestIdentity()
         req_id.api_id = api_id
@@ -574,6 +646,11 @@ class G1Manager(Node):
         self.control_pub.publish(req_msg)
 
     def initialize_g1(self):
+        if runtime_args.dry_run:
+            self.get_logger().info(
+                "DRY_RUN: G1 FSM initialization (Damp→StandUp→Start locomotion) BLOCKED."
+            )
+            return
         self.get_logger().info("G1 FSM: Damp (1)")
         self.send_fsm_command(1)
         time.sleep(3.0)
@@ -597,11 +674,11 @@ def parse_args():
         "--model-name",
         "--model_name",
         dest="model_name",
-        default=os.environ.get("INTERNNAV_MODEL_NAME", "InternVLA-N1-DualVLN"),
+        default=os.environ.get("INTERNNAV_MODEL_NAME", "InternVLA-N1-w-NavDP"),
     )
     parser.add_argument("--log-dir", default="./logs")
-    parser.add_argument("--rgb_topic", default="/camera/camera/color/image_raw")
-    parser.add_argument("--depth_topic", default="/camera/camera/aligned_depth_to_color/image_raw")
+    parser.add_argument("--rgb_topic", default="/camera/color/image_raw")
+    parser.add_argument("--depth_topic", default="/camera/aligned_depth_to_color/image_raw")
     parser.add_argument("--odom_topic", default="/lf/odommodestate")
     parser.add_argument("--control_topic", default="/api/sport/request")
     parser.add_argument("--debug_cmd_vel_topic", default="/cmd_vel")
@@ -632,7 +709,21 @@ def parse_args():
         default=6,
         help="Stop safely after this many consecutive [3,3,3,3] right-turn actions. Set 0 to disable.",
     )
+    parser.add_argument(
+        "--stop-confirm-count",
+        "--stop_confirm_count",
+        dest="stop_confirm_count",
+        type=int,
+        default=10,
+        help="Consecutive [0] model responses required for a terminal STOP. A tentative STOP holds position immediately; a later trajectory clears it.",
+    )
     parser.add_argument("--init_robot", action="store_true")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run full perception→HTTP→planning loop but block ALL control messages "
+        "(move, FSM, /api/sport/request, /cmd_vel, zero-velocity on shutdown).",
+    )
     return parser.parse_args()
 
 
@@ -707,6 +798,8 @@ def main():
     rclpy.init()
     try:
         manager = G1Manager()
+        if runtime_args.dry_run:
+            print("[MAIN] DRY_RUN enabled — ALL control messages are blocked. Safe to run without robot support.")
         if runtime_args.init_robot:
             manager.initialize_g1()
         else:
@@ -721,7 +814,10 @@ def main():
     finally:
         try:
             if manager is not None:
-                manager.move(0.0, 0.0, 0.0)
+                if runtime_args.dry_run:
+                    print("[MAIN] DRY_RUN: shutdown zero-velocity BLOCKED.")
+                else:
+                    manager.move(0.0, 0.0, 0.0)
                 time.sleep(0.5)
                 manager.destroy_node()
         except Exception as exc:

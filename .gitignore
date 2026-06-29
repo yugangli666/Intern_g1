@@ -146,6 +146,10 @@ logs/
 test_data/
 g1_server_logs/
 g1_logs_from_g1/
+g1_dataset_runs_from_g1/
+g1_client/dataset_runs/
+pixel_goal_nav/runs/
+deploy_packages/
 experiment_records/*
 !experiment_records/.gitkeep
 
@@ -157,3 +161,5 @@ checkpoints
 internnav/model/basemodel/LongCLIP/
 .gradio/
 result/
+*.before_remove_pixel_bugs.docx
+*.wps

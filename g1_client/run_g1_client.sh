@@ -3,23 +3,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [ -f "$HOME/unitree_ros2/setup.sh" ]; then
-  # shellcheck disable=SC1091
-  set +u
-  source "$HOME/unitree_ros2/setup.sh"
-  set -u
-fi
+# ── Load Foxy environment (handles nounset internally) ─────────────────
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/ros_foxy_env.sh"
+source_g1_ros_foxy
 
-if [ -f "$HOME/ros2_ws/install/setup.bash" ]; then
-  # shellcheck disable=SC1091
-  set +u
-  source "$HOME/ros2_ws/install/setup.bash"
-  set -u
-fi
-
+# ── CycloneDDS network-interface selection ─────────────────────────────
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/dds_interface.sh"
 configure_cyclonedds_interface
 
+# ── Launch the InternNav G1 client ─────────────────────────────────────
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 cd "$SCRIPT_DIR"
-python3 "$SCRIPT_DIR/http_internvla_client_g1.py" "$@"
+exec "$PYTHON_BIN" "$SCRIPT_DIR/http_internvla_client_g1.py" "$@"

@@ -46,7 +46,7 @@ trap sync_g1_logs_on_exit EXIT
 
 python scripts/realworld/http_internvla_server.py \
   --device cuda:0 \
-  --model_path checkpoints/InternVLA-N1-w-NavDP \
+  --model_path checkpoints/InternVLA-N1-DualVLN \
   --resize_w 384 \
   --resize_h 384 \
   --num_history 8 \
