@@ -1,0 +1,80 @@
+{
+  "schema_version": "g1_raw_v1",
+  "episode_id": "episode_20260626_145000",
+  "collection_mode": "manual_demo",
+  "instruction": "From the center, turn left and walk toward the black TV.",
+  "robot": "Unitree G1",
+  "camera": "RealSense D455",
+  "rgb_topic": "/camera/color/image_raw",
+  "depth_topic": "/camera/aligned_depth_to_color/image_raw",
+  "rgb_camera_info_topic": "/camera/color/camera_info",
+  "depth_camera_info_topic": "/camera/aligned_depth_to_color/camera_info",
+  "odom_topic": "/lf/odommodestate",
+  "control_topic": "/api/sport/request",
+  "target_fps": 5.0,
+  "rgb_encoding": "",
+  "depth_encoding": "",
+  "depth_storage": "raw_sensor_units",
+  "depth_unit_m_per_value": 0.001,
+  "image_width": 0,
+  "image_height": 0,
+  "camera_intrinsic": [],
+  "camera_intrinsic_source": "",
+  "camera_distortion": [],
+  "camera_distortion_source": "",
+  "distortion_model": "",
+  "rgb_frame_id": "",
+  "depth_frame_id": "",
+  "T_base_camera": [],
+  "camera_height_m": null,
+  "camera_pitch_deg": null,
+  "start_time_ns": 1782456600426103029,
+  "end_time_ns": 1782456603979765849,
+  "total_frames": 0,
+  "initial_odom": {
+    "parsed": {
+      "position": [
+        -3.6431145668029785,
+        -1.4055113792419434,
+        0.7205643057823181
+      ],
+      "quaternion": [
+        -0.005828010383993387,
+        -0.004815796390175819,
+        0.5024109482765198,
+        -0.8645959496498108
+      ],
+      "velocity": [
+        5.474904529734204e-09,
+        -2.184723513209974e-09,
+        5.724443212784536e-07
+      ],
+      "angular_velocity": [
+        0.0,
+        0.0,
+        -0.00872664526104927
+      ],
+      "derived_yaw": -1.0527659647241456,
+      "_quaternion_order": "wxyz",
+      "_parse_errors": []
+    }
+  },
+  "time_sync_policy": {
+    "stamp_preferred": true,
+    "fallback_to_recv_time": true,
+    "stale_message_skip": true,
+    "sync_time_basis": "auto_recv_when_odom_recv",
+    "rgb_depth_threshold_ms": 30.0,
+    "image_odom_threshold_ms": 80.0
+  },
+  "stale_skip_counts": {
+    "rgb_only": 0,
+    "depth_only": 0,
+    "both": 0,
+    "total": 0
+  },
+  "success": false,
+  "end_reason": "abort",
+  "failure_type": null,
+  "notes": ""
+}

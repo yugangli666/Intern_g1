@@ -1,0 +1,80 @@
+{
+  "schema_version": "g1_raw_v1",
+  "episode_id": "episode_20260626_145253",
+  "collection_mode": "manual_demo",
+  "instruction": "From the center, turn left and walk toward the black TV.",
+  "robot": "Unitree G1",
+  "camera": "RealSense D455",
+  "rgb_topic": "/camera/color/image_raw",
+  "depth_topic": "/camera/aligned_depth_to_color/image_raw",
+  "rgb_camera_info_topic": "/camera/color/camera_info",
+  "depth_camera_info_topic": "/camera/aligned_depth_to_color/camera_info",
+  "odom_topic": "/lf/odommodestate",
+  "control_topic": "/api/sport/request",
+  "target_fps": 5.0,
+  "rgb_encoding": "",
+  "depth_encoding": "",
+  "depth_storage": "raw_sensor_units",
+  "depth_unit_m_per_value": 0.001,
+  "image_width": 0,
+  "image_height": 0,
+  "camera_intrinsic": [],
+  "camera_intrinsic_source": "",
+  "camera_distortion": [],
+  "camera_distortion_source": "",
+  "distortion_model": "",
+  "rgb_frame_id": "",
+  "depth_frame_id": "",
+  "T_base_camera": [],
+  "camera_height_m": null,
+  "camera_pitch_deg": null,
+  "start_time_ns": 1782456773245111750,
+  "end_time_ns": 1782456812630051889,
+  "total_frames": 0,
+  "initial_odom": {
+    "parsed": {
+      "position": [
+        -4.188004970550537,
+        -3.541368246078491,
+        0.7205935120582581
+      ],
+      "quaternion": [
+        -0.008688632398843765,
+        -0.0017791143618524075,
+        0.9879041910171509,
+        -0.15481169521808624
+      ],
+      "velocity": [
+        -0.005314720794558525,
+        0.004524746909737587,
+        -0.002258516615256667
+      ],
+      "angular_velocity": [
+        0.0,
+        0.0,
+        -0.00872664526104927
+      ],
+      "derived_yaw": -2.8307139460159476,
+      "_quaternion_order": "wxyz",
+      "_parse_errors": []
+    }
+  },
+  "time_sync_policy": {
+    "stamp_preferred": true,
+    "fallback_to_recv_time": true,
+    "stale_message_skip": true,
+    "sync_time_basis": "auto_recv_when_odom_recv",
+    "rgb_depth_threshold_ms": 30.0,
+    "image_odom_threshold_ms": 80.0
+  },
+  "stale_skip_counts": {
+    "rgb_only": 0,
+    "depth_only": 0,
+    "both": 0,
+    "total": 0
+  },
+  "success": true,
+  "end_reason": "success_terminal",
+  "failure_type": null,
+  "notes": ""
+}

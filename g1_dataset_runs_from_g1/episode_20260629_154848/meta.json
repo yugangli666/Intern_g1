@@ -1,0 +1,110 @@
+{
+  "schema_version": "g1_raw_v1",
+  "episode_id": "episode_20260629_154848",
+  "collection_mode": "manual_demo",
+  "instruction": "From the center, turn left and walk toward the black TV.",
+  "robot": "Unitree G1",
+  "camera": "RealSense D455",
+  "rgb_topic": "/camera/color/image_raw",
+  "depth_topic": "/camera/aligned_depth_to_color/image_raw",
+  "rgb_camera_info_topic": "/camera/color/camera_info",
+  "depth_camera_info_topic": "/camera/aligned_depth_to_color/camera_info",
+  "odom_topic": "/lf/odommodestate",
+  "control_topic": "/api/sport/request",
+  "target_fps": 5.0,
+  "rgb_encoding": "rgb8",
+  "depth_encoding": "16UC1",
+  "depth_storage": "raw_sensor_units",
+  "depth_unit_m_per_value": 0.001,
+  "model_input": {
+    "enabled": true,
+    "root": "model_input",
+    "rgb_dir": "model_input/rgb",
+    "depth_dir": "model_input/depth",
+    "rgb_mime": "image/jpeg",
+    "depth_mime": "image/png",
+    "rgb_encoder": "PIL.Image.save(format='JPEG')",
+    "depth_encoder": "PIL.Image.save(format='PNG')",
+    "depth_value_m_per_unit": 0.0001,
+    "depth_conversion": "clip((raw_depth * depth_unit_m_per_value) * 10000, 0, 65535).astype(uint16)",
+    "matches_client": "g1_client/http_internvla_client_g1.py",
+    "server_endpoint": "/eval_dual"
+  },
+  "image_width": 424,
+  "image_height": 240,
+  "camera_intrinsic": [
+    214.28118896484375,
+    0.0,
+    214.10877990722656,
+    0.0,
+    214.02035522460938,
+    122.51557922363281,
+    0.0,
+    0.0,
+    1.0
+  ],
+  "camera_intrinsic_source": "rgb.k",
+  "camera_distortion": [
+    -0.05439917743206024,
+    0.06267689913511276,
+    0.00012003325537079945,
+    0.00046136960736475885,
+    -0.020554298534989357
+  ],
+  "camera_distortion_source": "rgb.d",
+  "distortion_model": "plumb_bob",
+  "rgb_frame_id": "camera_color_optical_frame",
+  "depth_frame_id": "camera_color_optical_frame",
+  "T_base_camera": [],
+  "camera_height_m": null,
+  "camera_pitch_deg": null,
+  "start_time_ns": 1782719328583789541,
+  "end_time_ns": 1782719338046676526,
+  "total_frames": 46,
+  "initial_odom": {
+    "parsed": {
+      "position": [
+        0.0931905210018158,
+        0.1270967423915863,
+        0.719772219657898
+      ],
+      "quaternion": [
+        -0.005896158516407013,
+        -0.007502368185669184,
+        0.6160712242126465,
+        -0.7876327037811279
+      ],
+      "velocity": [
+        -0.011256491765379906,
+        0.002526934491470456,
+        -0.0016240401891991496
+      ],
+      "angular_velocity": [
+        0.0,
+        0.0,
+        -0.0034906582441180944
+      ],
+      "derived_yaw": -1.3275612136487387,
+      "_quaternion_order": "wxyz",
+      "_parse_errors": []
+    }
+  },
+  "time_sync_policy": {
+    "stamp_preferred": true,
+    "fallback_to_recv_time": true,
+    "stale_message_skip": true,
+    "sync_time_basis": "auto_recv_when_odom_recv",
+    "rgb_depth_threshold_ms": 30.0,
+    "image_odom_threshold_ms": 80.0
+  },
+  "stale_skip_counts": {
+    "rgb_only": 0,
+    "depth_only": 0,
+    "both": 1,
+    "total": 1
+  },
+  "success": true,
+  "end_reason": "success_terminal",
+  "failure_type": null,
+  "notes": ""
+}

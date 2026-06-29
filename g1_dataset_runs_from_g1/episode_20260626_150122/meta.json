@@ -1,0 +1,96 @@
+{
+  "schema_version": "g1_raw_v1",
+  "episode_id": "episode_20260626_150122",
+  "collection_mode": "manual_demo",
+  "instruction": "From the center, turn left and walk toward the black TV.",
+  "robot": "Unitree G1",
+  "camera": "RealSense D455",
+  "rgb_topic": "/camera/color/image_raw",
+  "depth_topic": "/camera/aligned_depth_to_color/image_raw",
+  "rgb_camera_info_topic": "/camera/color/camera_info",
+  "depth_camera_info_topic": "/camera/aligned_depth_to_color/camera_info",
+  "odom_topic": "/lf/odommodestate",
+  "control_topic": "/api/sport/request",
+  "target_fps": 5.0,
+  "rgb_encoding": "rgb8",
+  "depth_encoding": "16UC1",
+  "depth_storage": "raw_sensor_units",
+  "depth_unit_m_per_value": 0.001,
+  "image_width": 640,
+  "image_height": 480,
+  "camera_intrinsic": [
+    387.81494140625,
+    0.0,
+    323.81964111328125,
+    0.0,
+    387.3428039550781,
+    244.5565185546875,
+    0.0,
+    0.0,
+    1.0
+  ],
+  "camera_intrinsic_source": "rgb.k",
+  "camera_distortion": [
+    -0.05439917743206024,
+    0.06267689913511276,
+    0.00012003325537079945,
+    0.00046136960736475885,
+    -0.020554298534989357
+  ],
+  "camera_distortion_source": "rgb.d",
+  "distortion_model": "plumb_bob",
+  "rgb_frame_id": "camera_color_optical_frame",
+  "depth_frame_id": "camera_color_optical_frame",
+  "T_base_camera": [],
+  "camera_height_m": null,
+  "camera_pitch_deg": null,
+  "start_time_ns": 1782457282068867160,
+  "end_time_ns": 1782457307014460859,
+  "total_frames": 6,
+  "initial_odom": {
+    "parsed": {
+      "position": [
+        -4.233709812164307,
+        -1.1163591146469116,
+        0.7211675047874451
+      ],
+      "quaternion": [
+        -0.007536685094237328,
+        0.0038701940793544054,
+        0.9110387563705444,
+        0.4122335910797119
+      ],
+      "velocity": [
+        3.2180653875002463e-07,
+        9.177306736773971e-08,
+        -7.798296906003088e-07
+      ],
+      "angular_velocity": [
+        0.0,
+        0.0,
+        -0.00523598724976182
+      ],
+      "derived_yaw": 2.291758586347713,
+      "_quaternion_order": "wxyz",
+      "_parse_errors": []
+    }
+  },
+  "time_sync_policy": {
+    "stamp_preferred": true,
+    "fallback_to_recv_time": true,
+    "stale_message_skip": true,
+    "sync_time_basis": "auto_recv_when_odom_recv",
+    "rgb_depth_threshold_ms": 30.0,
+    "image_odom_threshold_ms": 80.0
+  },
+  "stale_skip_counts": {
+    "rgb_only": 0,
+    "depth_only": 107,
+    "both": 6,
+    "total": 113
+  },
+  "success": true,
+  "end_reason": "success_terminal",
+  "failure_type": null,
+  "notes": ""
+}
