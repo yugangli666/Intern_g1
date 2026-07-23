@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(lsb_release -a)",
+      "Bash(dpkg -l code)",
+      "Bash(sudo -n true)",
+      "Bash(sudo apt-get *)",
+      "Bash(wget -qO- https://packages.microsoft.com/keys/microsoft.asc)",
+      "Bash(gpg --dearmor)",
+      "Bash(sudo install *)",
+      "Bash(sudo tee *)",
+      "Bash(rm /tmp/packages.microsoft.gpg)",
+      "Bash(chmod +x *)",
+      "Bash(docker rm *)",
+      "Bash(docker run *)",
+      "Bash(docker exec internnav_server *)",
+      "Bash(rm -f depth_anything_v2_metric_hypersim_vits.pth)",
+      "Bash(curl -L -o depth_anything_v2_metric_hypersim_vits.pth \"https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Hypersim-Small/resolve/main/depth_anything_v2_metric_hypersim_vits.pth\")",
+      "Bash(sudo rm *)",
+      "Bash(sudo wget *)",
+      "Bash(python3 http_internvla_client_g1.py --help)",
+      "Bash(bash quick_test.sh)",
+      "Bash(INSTRUCTION=\"Walk forward to the door\" bash *)",
+      "Bash(ros2 topic *)",
+      "Bash(RGB_TOPIC=\"/moz1/keyframe_image\" INSTRUCTION=\"Walk forward to the door\" FPS=2.0 bash *)",
+      "Bash(RGB_TOPIC=\"/moz1/keyframe_image\" INSTRUCTION=\"Walk forward to the door\" FPS=2.0 timeout 20 bash *)",
+      "Bash(pip3 list *)",
+      "Read(//home/spirit-ai/.claude/**)",
+      "Bash(python3 *)",
+      "Bash(grep -E \"^\\(movax|moz|monitor|robot|teleop|quanta\\)\\\\.[a-zA-Z_.]+$\")",
+      "Bash(docker exec *)",
+      "Bash(bash /home/spirit-ai/Intern_g1/restart_nav_slam_with_inference.sh)",
+      "Bash(docker stop *)",
+      "Bash(pip list *)",
+      "Bash(bash /home/spirit-ai/Intern_g1/start_inference_in_container.sh)"
+    ]
+  }
+}

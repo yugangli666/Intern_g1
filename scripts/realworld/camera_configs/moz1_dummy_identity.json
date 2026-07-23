@@ -1,0 +1,61 @@
+{
+  "name": "moz1_dummy_identity",
+  "primary_rgb_topic": "/moz_robot/camera/cam_high/image_raw",
+  "secondary_rgb_topic": "/moz_robot/camera/cam_high_extra/image_raw",
+  "depth_mode": "dummy",
+  "depth_topic": null,
+  "camera_intrinsic": [
+    [
+      386.5,
+      0.0,
+      328.9,
+      0.0
+    ],
+    [
+      0.0,
+      386.5,
+      244.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "camera_pose_source": "moz1_dummy_identity_config",
+  "camera_pose": [
+    [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "notes": "Dummy depth and identity camera pose placeholder. Replace camera_pose with calibrated camera-to-base extrinsic before using depth-grounded arrival judgments."
+}

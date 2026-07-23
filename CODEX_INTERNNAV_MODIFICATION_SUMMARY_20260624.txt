@@ -1,0 +1,132 @@
+InternNav：Codex 修改与完善历史汇总
+生成时间：2026-06-24
+
+一、证据范围与状态说明
+
+本总结交叉检索了本机 Codex 会话索引、当前 Git 分支提交记录和工作区状态。
+
+- 基线上游：origin/main = 7a5c624。
+- 当前提交：main / intern_g1/main = 384d134。
+- 可确认的正式提交：2026-06-05 至 2026-06-18 共 13 个，均位于 origin/main..HEAD。
+- 另有 2026-06-23 至 2026-06-24 的未提交工作，包括 Foxy 适配、部署包和独立红点跟踪目录。
+- 本文件不把 pycache、模型、图片、深度图和实验运行产物列为源代码修改。
+- 对未提交文件只能根据 Codex 会话和当前内容说明用途；没有提交基线或原始哈希时，不能仅凭当前状态证明其唯一作者。
+
+二、已提交的功能完善（按时间）
+
+1) 2026-06-05：G1 实机部署基础链路（9130be2）
+
+- 新增 g1_client/：G1 HTTP 客户端、MPC/PID 控制器、读写锁工具、机器人端依赖和启动脚本。
+- 服务端 scripts/realworld/http_internvla_server.py 接入实机 Agent 的 HTTP 调用。
+- 增加 NavDP 工作站启动脚本和 G1 部署说明。
+- 目标：形成“工作站模型服务 + G1 ROS2 客户端”的实机闭环，而非仅 Habitat 仿真评测。
+
+2) 2026-06-06：D455 与服务器启动适配（25ebbfc、b206526）
+
+- G1 客户端配置为 RealSense D455 的 RGB 与对齐深度话题。
+- 新增 D455 相机启动脚本，统一相机配置与 G1 客户端参数。
+- 修复 NavDP 实机服务端的启动/模型加载流程。
+
+3) 2026-06-06：DualVLN 支持与轨迹张量修复（e9311c4、5dfbd29）
+
+- 新增 DualVLN 工作站启动脚本；模型侧补齐 DualVLN 轨迹相关配置。
+- 修复轨迹转 NumPy 前未 detach 的问题，避免带梯度 Tensor 导致真实世界推理/轨迹后处理失败。
+
+4) 2026-06-17：像素目标可视化与实验记录（798d5d8、b5ebf1d）
+
+- 在 internnav/agent/internvla_n1_agent_realworld.py 中把模型输出的像素目标绘制为红色准星。
+- 对模型原始坐标与交换后的坐标进行边界判断，避免坐标顺序差异造成可视化落点错误。
+- 每个运行生成独立 run_id，保存指令、LLM 输出、红点图和实验记录目录。
+- 自动生成实验记录页：每页汇总 4 张红点图、步骤、时间、指令和模型输出，便于复盘。
+- 增加 experiment_records/.gitkeep 与 README 指引。
+
+5) 2026-06-18：G1 导航日志、网络与回收（254668d、ca12f47、0dc98cb、e7da274、28c9414）
+
+- 新增 g1_client/utils/navigation_logger.py：按运行保存 RGB、深度、HTTP 延迟、模型响应、控制/执行动作、元数据和最终结果。
+- G1 客户端在 HTTP 异常、短轨迹、轨迹更新及离散动作路径中均写入日志，提升故障定位能力。
+- 新增 DDS 网卡选择脚本，启动脚本会配置 CycloneDDS 接口，减少多网卡环境下 ROS2 通信不通的问题。
+- 工作站启动脚本在服务退出时可用 rsync，失败时回退 scp，从 G1 拉回导航日志。
+- 曾短暂把服务器侧日志接入服务端，随后为避免导入/运行耦合又移除，最终保留 G1 侧运行日志和工作站回收机制。
+- 修复工作站服务端对 g1_client 的导入路径问题。
+
+6) 2026-06-18：停止与转向保护（384d134）
+
+- 识别模型 [0] STOP 动作后清除 MPC/轨迹、发送零速度并停止后续规划。
+- 统计连续 [3,3,3,3] 右转动作，达到 --right-turn-stop-count（默认 6）后触发保护停机。
+- 将模型名、日志根目录和相关安全参数写入客户端 CLI 与说明文档。
+
+三、当前工作区中未提交的完善
+
+1) G1 ROS2 Foxy / D455 部署适配
+
+涉及：g1_client/dds_interface.sh、http_internvla_client_g1.py、run_d455_camera.sh、run_g1_client.sh，及未跟踪的 ros_foxy_env.sh、d455_rgbd_publisher.py、README_FOXY.md、CLAUDE_G1_FOXY_DEPLOY.md。
+
+- 启动脚本改为加载 ROS2 Foxy 环境；DDS XML 改用 Foxy 可接受的 NetworkInterfaceAddress 形式。
+- D455 支持 realsense2_camera 与 pyrealsense2 两种后端；使用 640x480@15 的低带宽配置和对齐深度话题。
+- 增加 dry-run：不创建控制发布者、不发送运动或 FSM 指令。
+- STOP 改为“先保持、连续确认后终止”，并加入停止计数；默认模型、相机话题和 Python 启动方式也做了适配。
+- 注意：这些文件目前相对 Git HEAD 仍是未提交修改，应在现场验证后再整理为独立提交。
+
+2) 稳定运行时部署包
+
+涉及：deploy_packages/g1_vln_model_runtime/ 及其 tar.gz、校验文件、协议文档和日志同步工具。
+
+- 保存一套可独立携带的 G1 客户端运行时、服务端 HTTP 协议说明与日志同步脚本。
+- 作用是将已验证的实机依赖与主仓库开发态代码分离，便于 G1 端回退和重部署。
+
+3) 独立红点跟踪原型 pixel_goal_nav/
+
+设计原则：不修改 internnav/、原 g1_client/、原启动脚本或现有 5801/eval_dual 服务；独立使用 5802/eval_pixel_goal。
+
+- server.py：复用模型的像素目标推理，忽略 latent trajectory 的直接控制用途；输出 pixel_goal_uv 与 base_link 下的 local_goal。
+- geometry.py：先使用胸前居中、近似水平相机的简化投影；15x15 深度中值、无效深度拒绝、0.4--1.2m 目标截断；预留完整相机外参配置。
+- g1_client.py：局部目标结合 odom 转世界坐标、20 点短路径和 MPC；默认 dry-run，必须 --enable-motion 才发布控制。
+- calibrate_camera.py 与 configs/：为后续相机到机体外参标定预留独立配置。
+- 每次请求/控制保存 RGB、深度、像素点、局部/世界目标、odom 与控制输出至 pixel_goal_nav/runs/。
+- 已执行过独立服务器与 G1 端的部署/日志回收；真实运行发现同步 HTTP 和同步写图会造成中途顿挫。
+
+4) 红点跟踪“平滑版”尝试
+
+涉及：pixel_goal_nav/smooth_g1_client.py、smooth_scheduler.py、async_logging.py、run_smooth_g1_client.sh、tests/test_smooth_scheduler.py、README.md。
+
+- 目标：用 ReentrantCallbackGroup + MultiThreadedExecutor、单 HTTP worker、10Hz 独立控制、深度去抖和异步日志，减少 HTTP 推理和写盘导致的停顿。
+- 当前单测结果：geometry 5/5、smooth 28/28，共 33/33 通过。
+- 但本轮代码审查未通过实机启用验收：
+  a. 安全恢复检查、创建 MPC、accept_goal 不是一个原子状态转换；危险帧可能在中间到达又被 accept_goal 清除。
+  b. AsyncRunLogger.close() 在 writer 仍存活时可能关闭 events 文件；已用临时复现确认 close 返回后 writer 仍可存活。
+  c. 恢复门控仅拒绝首次进入 hold 前的目标，恢复安全帧期间的在途旧目标仍可能被接受。
+- 结论：smooth_g1_client.py 目前不要带 --enable-motion 上实机；需先修复上述竞态和退出路径，并补覆盖生产客户端的集成测试。
+
+四、已完成的运行与分析工作
+
+- 检查并使用 experiment_records/20260624_141358 等记录，结合红点可视化和机器人轨迹分析“模型目标在玻璃门附近、机器人未到达”的原因。
+- 根据胸前 D455 安装位置制定了“像素红点 -> 深度 -> 机体局部目标 -> 世界短路径 -> MPC”的独立方案。
+- 将 pixel_goal_nav/ 拷贝至 G1 的 /home/unitree/Intern_g1/；为本机 SSH 公钥配置到 unitree@192.168.0.225。
+- 运行独立服务与 G1 客户端，分析 g1_20260624_174750 等运行日志：原同步方案控制间隔曾出现 1 秒以上空档，主要来自 HTTP 推理延迟和同步图像落盘。
+- 对原有红点客户端的离散兜底转向做过保守约束（转角/前进距离限制），避免反复右转失控；该行为属于独立 pixel_goal_nav，不改变原 InternNav 主客户端。
+
+五、当前仓库状态与后续建议
+
+- 正式分支已经具备：G1 实机闭环、D455 接入、DualVLN/NavDP 启动、像素可视化、实验记录、G1 日志、DDS 网络适配和停止保护。
+- 当前工作区仍混有 Foxy 适配、部署包、pixel_goal_nav、运行日志和少量无关文件（例如 clash.wps）；尚未形成干净提交。
+- 建议后续按三组提交整理：
+  1. G1 Foxy/D455 部署适配；
+  2. deploy_packages 发布物与文档；
+  3. pixel_goal_nav 独立实验功能。
+- 在修复并复审平滑版前，现场继续使用已经验证的原 g1_client.py 路径；红点方案仅以 dry-run 观察日志为宜。
+
+六、可追溯提交列表
+
+9130be2 Add G1 real-world deployment client
+25ebbfc Configure G1 client for D455 deployment
+b206526 Fix NavDP realworld server startup
+e9311c4 Add DualVLN workstation launch script
+5dfbd29 Detach DualVLN trajectories before numpy conversion
+798d5d8 Add pixel goal visualization records
+b5ebf1d Auto-generate experiment record pages
+254668d Add G1 navigation run logger
+ca12f47 Fix G1 DDS interface setup
+0dc98cb Mirror G1 run logs on workstation server
+e7da274 Fix workstation server g1_client import
+28c9414 Pull G1 logs after DualVLN server exit
+384d134 Handle G1 stop action and safety stop

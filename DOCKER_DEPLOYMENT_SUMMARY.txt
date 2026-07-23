@@ -1,0 +1,222 @@
+================================================================================
+  InternNav Docker 部署完成总结
+================================================================================
+
+✅ 已成功创建以下文件用于Docker部署：
+
+📂 启动脚本 (3个)
+  ├── docker_run_server.sh (6.0K) - 全自动启动脚本 [推荐]
+  ├── docker_quick_start.sh (1.6K) - 快速启动脚本
+  └── docker_start_server_in_container.sh (1.6K) - 容器内服务启动脚本
+
+📚 文档 (4个)
+  ├── README_DOCKER_DEPLOYMENT.md (6.2K) - 总览和快速开始 [首先阅读]
+  ├── DOCKER_QUICK_START.md (6.1K) - 速查表 [最常用]
+  ├── DOCKER_DEPLOYMENT_GUIDE.md (12K) - 详细指南 [深度参考]
+  └── DOCKER_FILES_INDEX.txt (6.3K) - 文件索引
+
+================================================================================
+  🚀 现在您可以开始使用！
+================================================================================
+
+【方式一】一键自动启动（推荐新手）
+-----------------------------------------
+cd /home/spirit-ai/Intern_g1
+bash docker_run_server.sh
+
+# 按提示操作：
+# 1. 选择 y 安装依赖（首次运行）
+# 2. 选择 y 启动推理服务
+# 3. 等待约60秒服务启动完成
+
+
+【方式二】快速启动（推荐熟悉用户）
+-----------------------------------------
+cd /home/spirit-ai/Intern_g1
+bash docker_quick_start.sh
+docker exec -it internnav_server bash /workspace/InternNav/docker_start_server_in_container.sh
+
+
+【方式三】手动启动（推荐开发调试）
+-----------------------------------------
+cd /home/spirit-ai/Intern_g1
+
+# 1. 启动容器
+docker run -d \
+    --name internnav_server \
+    --gpus all \
+    --net=host \
+    -v /home/spirit-ai/Intern_g1:/workspace/InternNav:rw \
+    -v /home/spirit-ai/model_vln:/workspace/model_vln:ro \
+    harbor.i.spirit-ai.com:443/slam_nav/nav_release:jazzy-thor-vln-deps-fixed-20260714 \
+    bash -lc "while true; do sleep 3600; done"
+
+# 2. 进入容器
+docker exec -it internnav_server bash
+
+# 3. 安装依赖（首次运行）
+cd /workspace/InternNav
+pip3 install -r requirements/internvla_n1.txt
+pip3 install -r requirements/core_requirements.txt
+pip3 install -e . --no-deps
+
+# 4. 启动推理服务
+python3 scripts/realworld/http_internvla_server.py \
+    --device cuda:0 \
+    --model_path /workspace/model_vln \
+    --resize_w 384 \
+    --resize_h 384 \
+    --num_history 8 \
+    --plan_step_gap 8 \
+    --port 5801 \
+    --skip_warmup
+
+================================================================================
+  ✓ 验证服务是否启动成功
+================================================================================
+
+# 1. 检查容器状态
+docker ps | grep internnav_server
+
+# 2. 查看日志
+docker logs -f internnav_server
+
+# 3. 测试服务（等待60秒后）
+curl http://localhost:5801/health
+
+# 4. 查看GPU使用
+nvidia-smi
+
+================================================================================
+  🎯 连接G1机器人进行测试
+================================================================================
+
+在工作站（192.168.0.170）启动服务后，在G1机器人上执行：
+
+ssh unitree@192.168.0.225
+cd /home/unitree/Intern_g1/g1_client
+
+# 1. 启动D455相机
+bash run_d455_camera.sh
+
+# 2. 启动导航客户端（dry-run模式）
+bash run_g1_client.sh \
+    --server_url http://192.168.0.170:5801/eval_dual \
+    --instruction "From the center, turn left and walk toward the black TV." \
+    --dry-run
+
+================================================================================
+  📖 查看文档
+================================================================================
+
+# 快速开始指南
+cat README_DOCKER_DEPLOYMENT.md
+
+# 常用命令速查
+cat DOCKER_QUICK_START.md
+
+# 详细部署指南
+cat DOCKER_DEPLOYMENT_GUIDE.md
+
+# 文件索引
+cat DOCKER_FILES_INDEX.txt
+
+================================================================================
+  🔧 常用管理命令
+================================================================================
+
+docker ps | grep internnav_server    # 查看容器状态
+docker logs -f internnav_server      # 查看日志
+docker exec -it internnav_server bash # 进入容器
+docker stop internnav_server         # 停止容器
+docker start internnav_server        # 启动容器
+docker restart internnav_server      # 重启容器
+docker rm -f internnav_server        # 删除容器
+docker stats internnav_server        # 查看资源使用
+
+nvidia-smi                           # 查看GPU状态
+curl http://localhost:5801/health    # 测试服务
+
+================================================================================
+  💡 重要配置信息
+================================================================================
+
+Docker镜像: harbor.i.spirit-ai.com:443/slam_nav/nav_release:jazzy-thor-vln-deps-fixed-20260714
+  - 架构: ARM64
+  - 大小: 39.4 GB
+  - 基础: Ubuntu 24.04 + ROS2 Jazzy + CUDA 13.0
+
+模型: InternVLA-N1 (Dual System)
+  - 路径: /home/spirit-ai/model_vln
+  - 大小: 16.7 GB
+  - 架构: InternVLAN1ForCausalLM
+
+网络配置:
+  - 工作站IP: 192.168.0.170
+  - G1机器人IP: 192.168.0.225
+  - 服务端口: 5801
+  - API端点: /eval_dual
+
+容器配置:
+  - 名称: internnav_server
+  - GPU: cuda:0
+  - 项目挂载: /home/spirit-ai/Intern_g1 -> /workspace/InternNav
+  - 模型挂载: /home/spirit-ai/model_vln -> /workspace/model_vln (只读)
+
+================================================================================
+  ⚠️ 注意事项
+================================================================================
+
+1. 首次运行需要安装依赖，约需10-15分钟
+2. 模型加载需要约60秒，请耐心等待
+3. 确保GPU有至少16GB显存
+4. 确保工作站和G1在同一网络（192.168.0.x）
+5. 推荐使用 docker_run_server.sh 进行首次部署
+
+================================================================================
+  🐛 常见问题
+================================================================================
+
+问题1: 容器启动失败
+解决: docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
+
+问题2: 端口被占用
+解决: SERVER_PORT=5802 bash docker_run_server.sh
+
+问题3: GPU内存不足
+解决: 修改 num_history 从 8 降到 4
+
+问题4: 模型加载失败
+解决: ls -lh /home/spirit-ai/model_vln/*.safetensors (检查4个文件)
+
+问题5: 依赖安装失败
+解决: pip3 install --upgrade pip && pip3 install -r requirements/internvla_n1.txt
+
+================================================================================
+  📞 技术支持
+================================================================================
+
+参考文档:
+  - 技术交接: InternNav_G1_Technical_Handover_20260629.docx
+  - 项目README: README.md
+  - G1部署: CLAUDE_G1_FOXY_DEPLOY.md
+
+在线资源:
+  - GitHub: https://github.com/InternRobotics/InternNav
+  - 主页: https://internrobotics.github.io/internvla-n1.github.io/
+  - 论文: https://arxiv.org/abs/2512.08186
+
+================================================================================
+
+✨ 所有文件已准备就绪！现在可以开始使用 Docker 部署 InternNav 了！
+
+建议首次使用运行：
+  cd /home/spirit-ai/Intern_g1
+  bash docker_run_server.sh
+
+祝您使用愉快！
+
+================================================================================
+创建日期: 2026-07-14
+维护者: Spirit AI Team
+================================================================================
