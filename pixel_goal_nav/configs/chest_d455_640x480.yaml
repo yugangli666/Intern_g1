@@ -1,0 +1,16 @@
+# Approximate Phase-1 settings for the centered chest-mounted D455.
+# Use camera_to_base.yaml after the field calibration is complete.
+camera:
+  width: 640
+  height: 480
+  fx: 386.5
+  fy: 386.5
+  cx: 328.9
+  cy: 244.0
+projection:
+  depth_window: 15
+  min_depth_m: 0.35
+  max_depth_m: 5.0
+  min_goal_m: 0.40
+  max_goal_m: 1.20
+  forward_scale: 1.0

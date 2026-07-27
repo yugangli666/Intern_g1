@@ -1,0 +1,8 @@
+# base_from_optical maps [right, down, forward, 1] from the D455 optical
+# frame into G1 base_link coordinates [forward, left, up, 1].
+# Generate a measured version with calibrate_camera.py before using it.
+base_from_optical:
+  - [0.0, 0.0, 1.0, 0.15]
+  - [-1.0, 0.0, 0.0, 0.0]
+  - [0.0, -1.0, 0.0, 0.70]
+  - [0.0, 0.0, 0.0, 1.0]

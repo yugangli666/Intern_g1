@@ -1,0 +1,102 @@
+# - Translation: [1.309, -1.046, 0.101]
+# - Rotation: in Quaternion [-0.001, -0.005, 0.984, -0.176]
+
+# - Translation: [0.774, 0.034, 0.097]
+# - Rotation: in Quaternion [0.007, -0.007, -0.826, 0.563]
+
+# - Translation: [-0.322, -0.081, 0.078]
+# - Rotation: in Quaternion [0.001, -0.006, -0.581, 0.814]
+
+# - Translation: [-0.322, -0.081, 0.078]
+# - Rotation: in Quaternion [0.001, -0.006, -0.581, 0.814]
+
+# Navigation Waypoints/Poses
+navigation_poses:
+  pose_1:
+    id: "pose_1"
+    position:
+      x: 1.309
+      y: -1.046
+      z: 0.101
+    orientation:
+      x: -0.001
+      y: -0.005
+      z: 0.984
+      w: -0.176
+  
+  pose_2:
+    id: "pose_2"
+    position:
+      x: 0.774
+      y: 0.034
+      z: 0.097
+    orientation:
+      x: 0.007
+      y: -0.007
+      z: -0.826
+      w: 0.563
+  
+  pose_3:
+    id: "pose_3"
+    position:
+      x: -0.322
+      y: -0.081
+      z: 0.078
+    orientation:
+      x: 0.001
+      y: -0.006
+      z: -0.581
+      w: 0.814
+
+  pose_4:
+    id: "pose_4"
+    position:
+      x: -0.322
+      y: -0.081
+      z: 0.078
+    orientation:
+      x: 0.001
+      y: -0.006
+      z: 0.581
+      w: 0.814
+
+# Task Definitions
+tasks:
+  forward_task:
+    task_type: "go_through_pose"
+    description: "patrol task - visit all navigation sites in order"
+    pose_sequence:
+      - "pose_1"
+      - "pose_2"
+      - "pose_3"
+    loop: false  # whether to loop
+  
+  backward_task:
+    task_type: "go_through_pose"
+    description: "patrol task - visit all navigation sites in order"
+    pose_sequence:
+      - "pose_3"
+      - "pose_2"
+      - "pose_1"
+    loop: false  # whether to loop
+
+  go_to_start_task:
+    task_type: "go_to_pose"
+    description: "go to start pose"
+    pose_sequence:
+      - "pose_1"
+    loop: false
+
+  go_to_dock_task:
+    task_type: "go_to_pose"
+    description: "go to dock pose"
+    pose_sequence:
+      - "pose_2"
+    loop: false
+
+  go_to_end_task:
+    task_type: "go_to_pose"
+    description: "go to end pose"
+    pose_sequence:
+      - "pose_3"
+    loop: false

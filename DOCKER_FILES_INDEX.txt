@@ -1,0 +1,180 @@
+================================================================================
+  InternNav Docker 部署文件索引
+================================================================================
+
+创建日期: 2026-07-14
+用途: 在Docker容器中运行InternVLA-N1推理服务
+
+================================================================================
+  启动脚本 (按推荐顺序)
+================================================================================
+
+1. docker_run_server.sh (推荐新手)
+   - 全自动化启动脚本
+   - 自动检查环境、启动容器、安装依赖、启动服务
+   - 交互式提示，适合首次使用
+   用法: bash docker_run_server.sh
+
+2. docker_quick_start.sh (推荐熟悉用户)
+   - 快速启动容器
+   - 需要手动启动推理服务
+   用法: bash docker_quick_start.sh
+
+3. docker_start_server_in_container.sh (容器内执行)
+   - 在已运行的容器内启动推理服务
+   - 包含依赖安装和服务启动
+   用法: docker exec -it internnav_server bash /workspace/InternNav/docker_start_server_in_container.sh
+
+================================================================================
+  文档 (按阅读顺序)
+================================================================================
+
+1. README_DOCKER_DEPLOYMENT.md (⭐ 首先阅读)
+   - 所有文件的说明和导航
+   - 快速开始指南
+   - 典型使用场景
+
+2. DOCKER_QUICK_START.md (⭐ 最常用)
+   - 三种启动方式速查
+   - 常用命令速查表
+   - 快速故障排查
+
+3. DOCKER_DEPLOYMENT_GUIDE.md (详细参考)
+   - 完整的部署步骤
+   - 详细的配置说明
+   - 深度故障排查
+   - 进阶使用技巧
+
+4. DOCKER_FILES_INDEX.txt (本文件)
+   - 文件索引和快速参考
+
+================================================================================
+  快速启动命令
+================================================================================
+
+# 方式一：全自动（推荐新手）
+cd /home/spirit-ai/Intern_g1
+bash docker_run_server.sh
+
+# 方式二：快速启动（推荐熟悉用户）
+cd /home/spirit-ai/Intern_g1
+bash docker_quick_start.sh
+docker exec -it internnav_server bash /workspace/InternNav/docker_start_server_in_container.sh
+
+# 方式三：手动启动（推荐开发者）
+cd /home/spirit-ai/Intern_g1
+docker run -d --name internnav_server --gpus all --net=host \
+    -v /home/spirit-ai/Intern_g1:/workspace/InternNav:rw \
+    -v /home/spirit-ai/model_vln:/workspace/model_vln:ro \
+    harbor.i.spirit-ai.com:443/slam_nav/nav_release:jazzy-thor-vln-deps-fixed-20260714 \
+    bash -lc "while true; do sleep 3600; done"
+docker exec -it internnav_server bash
+cd /workspace/InternNav && pip3 install -r requirements/internvla_n1.txt
+python3 scripts/realworld/http_internvla_server.py --device cuda:0 --model_path /workspace/model_vln --port 5801
+
+================================================================================
+  常用管理命令
+================================================================================
+
+# 查看容器状态
+docker ps | grep internnav_server
+
+# 查看日志
+docker logs -f internnav_server
+
+# 进入容器
+docker exec -it internnav_server bash
+
+# 停止容器
+docker stop internnav_server
+
+# 启动容器
+docker start internnav_server
+
+# 删除容器
+docker rm -f internnav_server
+
+# 查看GPU使用
+nvidia-smi
+
+# 测试服务
+curl http://localhost:5801/health
+
+================================================================================
+  系统信息
+================================================================================
+
+Docker镜像: harbor.i.spirit-ai.com:443/slam_nav/nav_release:jazzy-thor-vln-deps-fixed-20260714
+容器名称: internnav_server
+服务端口: 5801
+API端点: http://localhost:5801/eval_dual
+
+项目目录: /home/spirit-ai/Intern_g1
+模型目录: /home/spirit-ai/model_vln
+
+容器内项目路径: /workspace/InternNav
+容器内模型路径: /workspace/model_vln
+
+================================================================================
+  网络配置
+================================================================================
+
+工作站IP: 192.168.0.170
+G1机器人IP: 192.168.0.225
+推理服务端口: 5801
+
+G1访问地址: http://192.168.0.170:5801/eval_dual
+
+================================================================================
+  验证清单
+================================================================================
+
+启动后请检查：
+✓ 容器正在运行: docker ps | grep internnav_server
+✓ GPU被使用: nvidia-smi
+✓ 服务监听端口: netstat -tlnp | grep 5801
+✓ 日志无错误: docker logs internnav_server
+✓ 模型文件存在: ls -lh /home/spirit-ai/model_vln/*.safetensors
+
+================================================================================
+  故障排查快速参考
+================================================================================
+
+问题: 容器无法启动
+解决: docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
+
+问题: 端口被占用
+解决: SERVER_PORT=5802 bash docker_run_server.sh
+
+问题: GPU内存不足
+解决: 修改 --num_history 从 8 降到 4
+
+问题: 模型加载失败
+解决: ls -lh /home/spirit-ai/model_vln/*.safetensors (检查4个文件是否存在)
+
+问题: 依赖安装失败
+解决: docker exec -it internnav_server bash
+      pip3 install --upgrade pip
+      pip3 install -r requirements/internvla_n1.txt
+
+================================================================================
+  相关原始文档
+================================================================================
+
+InternNav_G1_Technical_Handover_20260629.docx - 技术交接文档
+README.md - InternNav项目原始README
+PROJECT_HISTORY.md - 项目历史
+CLAUDE_G1_FOXY_DEPLOY.md - G1 Foxy部署说明
+
+================================================================================
+  技术支持
+================================================================================
+
+查看详细文档: cat README_DOCKER_DEPLOYMENT.md
+查看快速启动: cat DOCKER_QUICK_START.md
+查看完整指南: cat DOCKER_DEPLOYMENT_GUIDE.md
+
+GitHub: https://github.com/InternRobotics/InternNav
+主页: https://internrobotics.github.io/internvla-n1.github.io/
+
+================================================================================

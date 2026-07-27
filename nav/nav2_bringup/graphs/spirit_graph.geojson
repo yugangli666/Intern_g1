@@ -1,0 +1,14 @@
+{
+    "type": "FeatureCollection",
+    "name": "spirit_graph",
+    "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::3857" } },
+    "features": [
+    { "type": "Feature", "properties": { "id": 1, "frame": "moz1/map"}, "geometry": { "type": "Point", "coordinates": [ 1.309, -1.046 ] } },
+    { "type": "Feature", "properties": { "id": 2, "frame": "moz1/map" }, "geometry": { "type": "Point", "coordinates": [ 0.774, 0.034 ] } },
+    { "type": "Feature", "properties": { "id": 3, "frame": "moz1/map" }, "geometry": { "type": "Point", "coordinates": [ -0.322, -0.081 ] } },
+    { "type": "Feature", "properties": { "id": 4, "frame": "moz1/map" }, "geometry": { "type": "Point", "coordinates": [ -0.322, -0.081 ] } },
+    { "type": "Feature", "properties": { "id": 5, "startid": 1, "endid": 2 }, "geometry": { "type": "MultiLineString", "coordinates": [ [ [ 1.309, -1.046 ], [ 0.774, 0.034 ] ] ] } },
+    { "type": "Feature", "properties": { "id": 6, "startid": 2, "endid": 3 }, "geometry": { "type": "MultiLineString", "coordinates": [ [ [ 0.774, 0.034 ], [ -0.322, -0.081 ] ] ] } },
+    { "type": "Feature", "properties": { "id": 7, "startid": 3, "endid": 4 }, "geometry": { "type": "MultiLineString", "coordinates": [ [ [ -0.322, -0.081 ], [ -0.322, -0.081 ] ] ] } }
+    ]
+}
