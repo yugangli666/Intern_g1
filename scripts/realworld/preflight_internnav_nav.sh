@@ -25,8 +25,8 @@ case "${1:-}" in
 esac
 
 SERVER_HEALTH_URL="${SERVER_HEALTH_URL:-http://127.0.0.1:5801/health}"
-PRIMARY_RGB_TOPIC="${PRIMARY_RGB_TOPIC:-/moz_robot/camera/cam_high_extra/image_raw}"
-SECONDARY_RGB_TOPIC="${SECONDARY_RGB_TOPIC:-/moz_robot/camera/cam_high/image_raw}"
+PRIMARY_RGB_TOPIC="${PRIMARY_RGB_TOPIC:-/camera/cam_high_extra/image_undistorted}"
+SECONDARY_RGB_TOPIC="${SECONDARY_RGB_TOPIC:-/camera/cam_high/image_raw}"
 ODOM_TOPIC="${ODOM_TOPIC:-/moz1/odom_global}"
 GLOBAL_FRAME="${GLOBAL_FRAME:-moz1/map}"
 BASE_FRAME="${BASE_FRAME:-moz1/base_link}"

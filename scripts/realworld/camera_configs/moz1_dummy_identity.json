@@ -1,7 +1,7 @@
 {
   "name": "moz1_dummy_identity",
-  "primary_rgb_topic": "/moz_robot/camera/cam_high/image_raw",
-  "secondary_rgb_topic": "/moz_robot/camera/cam_high_extra/image_raw",
+  "primary_rgb_topic": "/camera/cam_high_extra/image_undistorted",
+  "secondary_rgb_topic": "/camera/cam_high/image_raw",
   "depth_mode": "dummy",
   "depth_topic": null,
   "camera_intrinsic": [

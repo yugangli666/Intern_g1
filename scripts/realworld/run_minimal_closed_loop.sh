@@ -7,8 +7,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 SERVER_URL="${SERVER_URL:-http://127.0.0.1:5801/eval_dual}"
 HEALTH_URL="${HEALTH_URL:-${SERVER_URL%/eval_dual}/health}"
-PRIMARY_RGB_TOPIC="${PRIMARY_RGB_TOPIC:-/moz_robot/camera/cam_high_extra/image_raw}"
-SECONDARY_RGB_TOPIC="${SECONDARY_RGB_TOPIC:-/moz_robot/camera/cam_high/image_raw}"
+PRIMARY_RGB_TOPIC="${PRIMARY_RGB_TOPIC:-/camera/cam_high_extra/image_undistorted}"
+SECONDARY_RGB_TOPIC="${SECONDARY_RGB_TOPIC:-/camera/cam_high/image_raw}"
 ODOM_TOPIC="${ODOM_TOPIC:-/moz1/odom_global}"
 INSTRUCTION="${INSTRUCTION:-Walk forward to the door}"
 ENABLE_MOTION="${ENABLE_MOTION:-0}"
@@ -25,6 +25,8 @@ LINEAR_SPEED="${LINEAR_SPEED:-0.04}"
 ANGULAR_SPEED="${ANGULAR_SPEED:-0.08}"
 MAX_BASE_LINEAR="${MAX_BASE_LINEAR:-0.08}"
 MAX_BASE_ANGULAR="${MAX_BASE_ANGULAR:-0.12}"
+USE_BASE_MOTION_SERVICE="${USE_BASE_MOTION_SERVICE:-1}"
+BASE_MOTION_SERVICE_TIMEOUT="${BASE_MOTION_SERVICE_TIMEOUT:-3.0}"
 YAW_TOLERANCE_DEGREES="${YAW_TOLERANCE_DEGREES:-1.0}"
 SPIN_OVERSHOOT_DEGREES="${SPIN_OVERSHOOT_DEGREES:-2.0}"
 SPIN_CONTROL_MODE="${SPIN_CONTROL_MODE:-target_yaw}"
@@ -163,6 +165,7 @@ client_args=(
     --turn-direction-check-delay "$TURN_DIRECTION_CHECK_DELAY"
     --turn-direction-min-yaw-degrees "$TURN_DIRECTION_MIN_YAW_DEGREES"
     --motion-timeout "$MOTION_TIMEOUT"
+    --base-motion-service-timeout "$BASE_MOTION_SERVICE_TIMEOUT"
     --preflight-wait "$PREFLIGHT_WAIT"
     --control-mode "$CONTROL_MODE"
     --command-angular-sign "$COMMAND_ANGULAR_SIGN"
@@ -201,6 +204,9 @@ if [ "$CONTROL_MODE" = "mpc_tracking" ]; then
 fi
 if [ "$ALLOW_LEGACY_IDLE_STACK" = "1" ]; then
     client_args+=(--allow-legacy-idle-stack)
+fi
+if [ "$USE_BASE_MOTION_SERVICE" = "0" ]; then
+    client_args+=(--no-use-base-motion-service)
 fi
 if [ "$FALLBACK_TURN_RESET_ON_TRAJECTORY" = "1" ]; then
     client_args+=(--fallback-turn-reset-on-trajectory)

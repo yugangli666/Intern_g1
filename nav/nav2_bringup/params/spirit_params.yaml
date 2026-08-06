@@ -514,7 +514,7 @@ collision_monitor:
       radius: 0.8
       action_type: "slowdown"
       max_points: 4
-      slowdown_ratio: 0.3
+      slowdown_ratio: 0.65
       polygon_pub_topic: "circle_limit"
       visualize: True
       enabled: True

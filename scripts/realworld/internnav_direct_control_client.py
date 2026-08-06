@@ -27,6 +27,11 @@ from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
 from std_msgs.msg import Bool, Int32, String
 
+try:
+    from mc_core_interface.srv import RobotCmdService
+except ImportError:  # pragma: no cover - only absent outside real robot ROS envs
+    RobotCmdService = None
+
 from direct_control_utils import (
     DirectMotionStep,
     TurnOdomProgress,
@@ -35,7 +40,6 @@ from direct_control_utils import (
     direct_step_from_response,
     grounding_summary,
     start_turn_odometry,
-    turn_direction_mismatch,
     update_turn_odometry,
 )
 from mpc_tracking_utils import (
@@ -132,6 +136,7 @@ class InternNavDirectControlClient(Node):
         self._ready = False
         self._done = False
         self._emergency = False
+        self._base_motion_started = False
         self._zero_until = 0.0
         self._next_inference_after = 0.0
 
@@ -193,10 +198,16 @@ class InternNavDirectControlClient(Node):
             self.command_pub = self.create_publisher(Twist, args.command_topic, 10)
             self.stop_task_pub = self.create_publisher(Bool, args.stop_task_topic, 10)
             self.emergency_pub = self.create_publisher(Bool, args.emergency_stop_topic, 10)
+            self.base_motion_client = (
+                self.create_client(RobotCmdService, args.base_motion_service)
+                if RobotCmdService is not None
+                else None
+            )
         else:
             self.command_pub = self.create_publisher(Twist, "/internnav/dry_run_cmd_vel", 10)
             self.stop_task_pub = self.create_publisher(Bool, "/internnav/dry_run_stop_task", 10)
             self.emergency_pub = self.create_publisher(Bool, "/internnav/dry_run_emergency_stop", 10)
+            self.base_motion_client = None
         self.status_pub = self.create_publisher(String, args.status_topic, 10)
 
         schedule_period = min(1.0 / args.inference_fps, 1.0 / args.spin_replan_fps)
@@ -308,6 +319,78 @@ class InternNavDirectControlClient(Node):
             raise RuntimeError("legacy VLN activity observed during preflight")
         self._ready = True
         self._set_state("READY", "minimal velocity loop ready")
+
+    def _call_base_motion_service(self, cmd: str, data: dict[str, Any]) -> bool:
+        client = self.base_motion_client
+        if client is None or RobotCmdService is None:
+            raise RuntimeError(
+                "mc_core_interface RobotCmdService is unavailable; source ros_interface before real motion"
+            )
+        if not client.wait_for_service(timeout_sec=self.args.base_motion_service_timeout):
+            raise RuntimeError(
+                f"{self.args.base_motion_service} is unavailable; cannot send {cmd}"
+            )
+        request = RobotCmdService.Request()
+        request.cmd = cmd
+        request.data = json.dumps(data, ensure_ascii=False)
+        future = client.call_async(request)
+        rclpy.spin_until_future_complete(
+            self,
+            future,
+            timeout_sec=self.args.base_motion_service_timeout,
+        )
+        if not future.done():
+            raise RuntimeError(f"{self.args.base_motion_service} timed out during {cmd}")
+        response = future.result()
+        ok = bool(response and response.success)
+        self._append_event(
+            {
+                "state": "BASE_MOTION_SERVICE",
+                "cmd": cmd,
+                "request_data": data,
+                "success": ok,
+                "response_data": response.data if response is not None else None,
+            }
+        )
+        if not ok:
+            detail = response.data if response is not None else "no response"
+            raise RuntimeError(f"{cmd} failed: {detail}")
+        return ok
+
+    def start_base_motion_mode(self) -> None:
+        if not self.args.enable_motion or not self.args.use_base_motion_service:
+            return
+        if self._base_motion_started:
+            return
+        self._call_base_motion_service(
+            "StartBaseMove",
+            {
+                "direction": 0,
+                "tran_vel": float(self.args.base_motion_tran_vel),
+                "rot_vel": float(self.args.base_motion_rot_vel),
+            },
+        )
+        self._base_motion_started = True
+        self._set_state("BASE_MOTION_READY", "base motion state machine armed")
+
+    def stop_base_motion_mode(self) -> None:
+        if not self.args.enable_motion or not self.args.use_base_motion_service:
+            return
+        if not self._base_motion_started:
+            return
+        try:
+            self._call_base_motion_service("StopBaseMove", {})
+        except RuntimeError as exc:
+            self._append_event(
+                {
+                    "state": "BASE_MOTION_SERVICE",
+                    "cmd": "StopBaseMove",
+                    "success": False,
+                    "reason": str(exc),
+                }
+            )
+        finally:
+            self._base_motion_started = False
 
     def _schedule_inference(self) -> None:
         now = time.monotonic()
@@ -793,7 +876,9 @@ class InternNavDirectControlClient(Node):
         self._fallback_turn_nominal_segment_deg = (
             len(plan.actions_used) * self.args.discrete_turn_degrees
         )
-        self._fallback_turn_expected_yaw_sign = expected_turn_yaw_sign(actions)
+        self._fallback_turn_expected_yaw_sign = (
+            expected_turn_yaw_sign(actions) * self.args.command_angular_sign
+        )
         self._fallback_turn_segment_start_unwrapped = self._fallback_turn_odom.unwrapped_yaw
         self._fallback_turn_segment_start_travel_deg = (
             self._fallback_turn_odom.actual_travel_degrees
@@ -832,31 +917,59 @@ class InternNavDirectControlClient(Node):
         self._update_fallback_turn_odometry(pose.yaw)
         metrics = self._fallback_turn_metrics()
         observed_delta = metrics["fallback_turn_actual_segment_deg"]
+        segment_travel = (
+            metrics["fallback_turn_actual_travel_deg"]
+            - self._fallback_turn_segment_start_travel_deg
+        )
+        command_yaw_rate_deg = (
+            abs(self._fallback_turn_w * self.args.command_angular_sign) * 180.0 / math.pi
+        )
+        max_plausible_travel = max(
+            20.0,
+            command_yaw_rate_deg * max(0.0, elapsed) * 4.0,
+        )
+        if (
+            not self._fallback_turn_direction_checked
+            and elapsed >= self.args.turn_direction_check_delay
+            and segment_travel > max_plausible_travel
+        ):
+            self._append_event(
+                {
+                    "state": "ODOM_JUMP_IGNORED",
+                    "reason": "implausible fallback turn odometry jump",
+                    "segment_travel_deg": round(segment_travel, 3),
+                    "max_plausible_travel_deg": round(max_plausible_travel, 3),
+                    "observed_yaw_delta_deg": observed_delta,
+                    **metrics,
+                }
+            )
+            self._fallback_turn_segment_start_unwrapped = (
+                self._fallback_turn_odom.unwrapped_yaw
+            )
+            self._fallback_turn_segment_start_travel_deg = (
+                self._fallback_turn_odom.actual_travel_degrees
+            )
+            self._fallback_turn_started = now
+            return
         if (
             not self._fallback_turn_direction_checked
             and elapsed >= self.args.turn_direction_check_delay
             and abs(observed_delta) >= self.args.turn_direction_min_yaw_degrees
         ):
-            if turn_direction_mismatch(
-                self._fallback_turn_actions_raw,
-                observed_delta,
-                self.args.turn_direction_min_yaw_degrees,
-            ):
-                details = {
-                    "expected_yaw_sign": self._fallback_turn_expected_yaw_sign,
-                    "observed_yaw_delta_deg": observed_delta,
-                    "command_angular_z": round(
-                        self._fallback_turn_w * self.args.command_angular_sign, 6
-                    ),
-                    "actions_raw": list(self._fallback_turn_actions_raw),
-                    **metrics,
-                }
-                self._trigger_emergency(
-                    "fallback turn odometry moved opposite to the model action",
-                    fault_code="TURN_DIRECTION_MISMATCH",
-                    details=details,
+            if observed_delta * self._fallback_turn_expected_yaw_sign < 0.0:
+                self._append_event(
+                    {
+                        "state": "TURN_DIRECTION_WARNING",
+                        "reason": "fallback turn odometry moved opposite to the commanded sign",
+                        "expected_yaw_sign": self._fallback_turn_expected_yaw_sign,
+                        "observed_yaw_delta_deg": observed_delta,
+                        "command_angular_z": round(
+                            self._fallback_turn_w * self.args.command_angular_sign, 6
+                        ),
+                        "actions_raw": list(self._fallback_turn_actions_raw),
+                        **metrics,
+                    }
                 )
-                return
             self._fallback_turn_direction_checked = True
         if elapsed > self.args.fallback_turn_timeout:
             self._finish_fallback_turn(False, f"fallback turn timeout after {elapsed:.2f}s")
@@ -1363,9 +1476,6 @@ class InternNavDirectControlClient(Node):
             self._trigger_emergency(f"legacy navigation became active: {self._nav_status}")
             return
         elapsed = now - motion["started"]
-        if elapsed > self.args.motion_timeout:
-            self._finish_motion(False, f"motion timeout after {elapsed:.2f}s")
-            return
         start: Pose2D = motion["start_pose"]
         step: DirectMotionStep = motion["step"]
         displacement = math.hypot(pose.x - start.x, pose.y - start.y)
@@ -1389,6 +1499,9 @@ class InternNavDirectControlClient(Node):
             if displacement > step.target_distance + self.args.forward_overshoot:
                 self._trigger_emergency(f"forward overshoot: {displacement:.3f}m")
                 return
+        if elapsed > self.args.motion_timeout:
+            self._finish_motion(False, f"motion timeout after {elapsed:.2f}s")
+            return
         self.command_pub.publish(motion["command"])
 
     def _finish_motion(self, succeeded: bool, reason: str) -> None:
@@ -1566,6 +1679,10 @@ class InternNavDirectControlClient(Node):
             ),
             "dry_run_preview_motion": self.args.dry_run_preview_motion,
             "base_command_topic": self.args.base_command_topic,
+            "use_base_motion_service": self.args.use_base_motion_service,
+            "base_motion_service": self.args.base_motion_service,
+            "base_motion_tran_vel": self.args.base_motion_tran_vel,
+            "base_motion_rot_vel": self.args.base_motion_rot_vel,
             "motion_enabled": self.args.enable_motion,
             "forward_enabled": self.args.allow_forward_motion,
             "linear_speed": self.args.linear_speed,
@@ -1641,6 +1758,7 @@ class InternNavDirectControlClient(Node):
             if emergency_shutdown:
                 self._publish_emergency_signal()
             rclpy.spin_once(self, timeout_sec=0.02)
+        self.stop_base_motion_mode()
         self._stop_event.set()
         try:
             self._inference_queue.put_nowait(None)
@@ -1663,6 +1781,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--odom-topic", default="/moz1/odom_global")
     parser.add_argument("--command-topic", default="/cmd_vel_nav")
     parser.add_argument("--base-command-topic", default="/mx_base_vel_command")
+    parser.add_argument("--base-motion-service", default="/robot_cmd_service")
+    parser.add_argument(
+        "--use-base-motion-service",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="real motion: send StartBaseMove before velocity streaming and StopBaseMove on exit",
+    )
+    parser.add_argument("--base-motion-service-timeout", type=float, default=3.0)
+    parser.add_argument("--base-motion-tran-vel", type=float, default=0.0)
+    parser.add_argument("--base-motion-rot-vel", type=float, default=30.0)
     parser.add_argument("--nav-task-status-topic", default="/nav_task_status")
     parser.add_argument("--vln-activity-topic", default="/vln/verification_passed")
     parser.add_argument("--status-topic", default="/internnav/status")
@@ -1815,9 +1943,12 @@ def main() -> int:
         "turn_direction_min_yaw_degrees",
         "control_rate",
         "motion_timeout",
+        "base_motion_service_timeout",
     ):
         if getattr(args, name) <= 0.0:
             parser.error(f"--{name.replace('_', '-')} must be positive")
+    if not math.isfinite(args.base_motion_tran_vel) or not math.isfinite(args.base_motion_rot_vel):
+        parser.error("--base-motion-tran-vel and --base-motion-rot-vel must be finite")
     if args.turn_only_max_inferences < 0:
         parser.error("--turn-only-max-inferences must be non-negative")
     camera_config = {}
@@ -1860,6 +1991,8 @@ def main() -> int:
             parser.error("motion requires INTERNNAV_MOTION_ARMED=YES")
         if args.dry_run_preview_motion:
             parser.error("--dry-run-preview-motion cannot be combined with --enable-motion")
+        if args.use_base_motion_service and RobotCmdService is None:
+            parser.error("real motion base service requires mc_core_interface/srv/RobotCmdService")
     if args.allow_forward_motion:
         if not args.enable_motion:
             parser.error("--allow-forward-motion requires --enable-motion")
@@ -1910,6 +2043,7 @@ def main() -> int:
             while rclpy.ok() and time.monotonic() < deadline:
                 rclpy.spin_once(node, timeout_sec=0.1)
             node.complete_preflight()
+            node.start_base_motion_mode()
             while rclpy.ok() and not node.done:
                 rclpy.spin_once(node, timeout_sec=0.1)
     except KeyboardInterrupt:
